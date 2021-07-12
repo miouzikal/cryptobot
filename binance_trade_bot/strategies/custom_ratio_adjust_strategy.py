@@ -133,10 +133,10 @@ class Strategy(AutoTrader):
                         continue
                     new_coin_list.append(line)
 
+        # Add current coin back in new list if not already there
         current_coin = self.db.get_current_coin()
-
-        if current_coin is not None and current_coin not in new_coin_list:
-            new_coin_list.append(current_coin)
+        if current_coin is not None and current_coin.symbol not in new_coin_list:
+            new_coin_list.append(current_coin.symbol)
 
         self.config.SUPPORTED_COIN_LIST = new_coin_list
         try:
@@ -144,7 +144,6 @@ class Strategy(AutoTrader):
             self.logger.info(f"New Coin List: {self.config.SUPPORTED_COIN_LIST}")
         except Exception as e:
             self.logger.info(f'Unable to update database with "new_coin_list" : {e}')
-
 
     def bridge_scout(self):
         current_coin = self.db.get_current_coin()
