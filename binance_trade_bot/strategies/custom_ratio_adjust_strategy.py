@@ -114,7 +114,14 @@ class Strategy(AutoTrader):
             })
         except Exception as e:
             self.logger.info(f'Unable to generate "new_coin_list" : {e}')
-            sys.exit()
+            try:
+                if len(self.config.SUPPORTED_COIN_LIST) > 0:
+                    self.logger.info(f'Keeping current coin list until next refresh')
+                    self.logger.info(f"Current coin list : {self.config.SUPPORTED_COIN_LIST}")
+                    return
+            except:
+                self.logger.info(f'Empty coin list - Aborting!')
+                sys.exit()
 
         # Get supported coin list from supported_coin_list file
         if os.path.exists("new_coin_list"):
