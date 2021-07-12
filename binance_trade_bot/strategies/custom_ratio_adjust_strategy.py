@@ -126,6 +126,11 @@ class Strategy(AutoTrader):
                         continue
                     new_coin_list.append(line)
 
+        current_coin = self.db.get_current_coin()
+
+        if current_coin is not None and current_coin not in new_coin_list:
+            new_coin_list.append(current_coin)
+
         self.config.SUPPORTED_COIN_LIST = new_coin_list
         try:
             self.db.set_coins(self.config.SUPPORTED_COIN_LIST)
@@ -261,7 +266,6 @@ class Strategy(AutoTrader):
                                 price_history[to_coin_symbol].append(price)
                         except:
                             self.logger.info(f"Skip initialization. Could not fetch data for {to_coin_symbol}{self.config.BRIDGE_SYMBOL}")
-                            self.config.SUPPORTED_COIN_LIST.remove(to_coin_symbol)
                             continue
 
                     if len(price_history[from_coin_symbol]) != init_weight*2:
@@ -284,7 +288,6 @@ class Strategy(AutoTrader):
                     pair.ratio = cumulative_ratio
 
             self.logger.info(f"Finished ratio init...")
-        self.db.set_coins(self.config.SUPPORTED_COIN_LIST)
 
     def _jump_to_best_coin(self, coin: Coin, coin_price: float, excluded_coins: List[Coin] = []):
         """
