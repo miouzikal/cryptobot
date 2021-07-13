@@ -125,7 +125,7 @@ class Strategy(AutoTrader):
                 ]
             })
         except Exception as e:
-            self.logger.info(f'Unable to generate "new_coin_list" : {e}')
+            self.logger.info(f'Unable to generate "supported_coin_list" : {e}')
             try:
                 if len(self.config.SUPPORTED_COIN_LIST) > 2:
                     self.logger.info(f'Keeping current coin list until next refresh')
@@ -136,8 +136,8 @@ class Strategy(AutoTrader):
                 sys.exit()
 
         # Get supported coin list from supported_coin_list file
-        if os.path.exists("new_coin_list"):
-            with open("new_coin_list") as rfh:
+        if os.path.exists("supported_coin_list"):
+            with open("supported_coin_list") as rfh:
                 for line in rfh:
                     line = line.strip()
                     if not line or line.startswith(
@@ -155,7 +155,7 @@ class Strategy(AutoTrader):
             self.db.set_coins(self.config.SUPPORTED_COIN_LIST)
             self.logger.info(f"New Coin List: {self.config.SUPPORTED_COIN_LIST}")
         except Exception as e:
-            self.logger.info(f'Unable to update database with "new_coin_list" : {e}')
+            self.logger.info(f'Unable to update database with "supported_coin_list" : {e}')
 
     def bridge_scout(self):
         current_coin = self.db.get_current_coin()

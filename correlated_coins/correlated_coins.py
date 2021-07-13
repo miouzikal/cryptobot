@@ -316,9 +316,9 @@ def get_all_correlated_list(history):
             new_coin_list.append(coin)
 
     #print(sorted(filtered_correlated_coin_list))
-    print("Updating new_coin_list ...")
+    print("Updating supported_coin_list ...")
     try:
-        with open('new_coin_list', 'w') as writer:
+        with open('supported_coin_list', 'w') as writer:
             # save top 40 to file
             for coin in new_coin_list[:40]:
                     writer.write(coin+'\n')
