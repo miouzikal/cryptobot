@@ -262,7 +262,7 @@ def backtest(
         logger.error("Invalid strategy name")
         return manager
     trader = strategy(manager, db, logger, config)
-    #trader.initialize()
+    trader.initialize()
 
     yield manager
 

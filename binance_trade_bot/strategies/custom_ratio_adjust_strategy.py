@@ -18,14 +18,17 @@ from sqlalchemy.sql.expression import and_
 
 class Strategy(AutoTrader):
 
-    def __init__(self, binance_manager: BinanceAPIManager, database: Database,
-                 logger: Logger, config: Config):
+    #def initialize(self, binance_manager: BinanceAPIManager, database: Database,
+    #             logger: Logger, config: Config):
 
+    def initialize(self):        
+        '''     
         self.manager = binance_manager
         self.db = database
         self.logger = logger
         self.config = config
         self.failed_buy_order = False
+        '''
 
         #self.logger.info(f"CAUTION: The ratio_adjust strategy is still work in progress and can lead to losses! Use this strategy only if you know what you are doing, did alot of backtests and can live with possible losses.")
         #if self.config.ACCEPT_LOSSES != True:
@@ -36,10 +39,13 @@ class Strategy(AutoTrader):
             if len(self.config.SUPPORTED_COIN_LIST) > 2:
                 self.logger.info(f'Keeping current coin list until next refresh')
                 self.logger.info(f"Current coin list : {self.config.SUPPORTED_COIN_LIST}")
+            else:
+                self.generate_new_coin_list()
         except:
             self.generate_new_coin_list()
 
         super().initialize()
+
         self.reinit_threshold = self.manager.now().replace(second=0,
                                                            microsecond=0)
         self.regenerate_coin_list = self.manager.now().replace(hour=0,minute=0,second=0,

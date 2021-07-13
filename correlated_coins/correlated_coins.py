@@ -109,27 +109,20 @@ def get_one_coin_combinations(coin_list, coin):
     return combinations
 
 
-def get_coins_history(coin_list, bridge):
-    klines = {}
+def get_coin_history(coin, bridge):
+    coin_kline = {}
 
     end = str(history_end.replace(microsecond=0).replace(tzinfo=timezone.utc).astimezone(tz=None))
     start = str(history_start.replace(microsecond=0).replace(tzinfo=timezone.utc).astimezone(tz=None))
 
-    count = 0
-    for coin in coin_list:
+    try:
+        coin_kline[coin] = client.get_historical_klines(
+            coin+bridge, history_interval, start, end)
+    except BinanceAPIException as e:
+        print("Error"+str(e))
+        pass
 
-        print("Getting "+coin+bridge+" history data... " +
-              str(round((count*100)/len(coin_list))) + "%")
-        try:
-            coin_klines = client.get_historical_klines(
-                coin+bridge, history_interval, start, end)
-            klines[coin] = coin_klines
-        except BinanceAPIException as e:
-            print("Error"+str(e))
-            pass
-        count = count + 1
-
-    return klines
+    return coin_kline
 
 
 def get_existing_coins(coin_list, coins_history):
@@ -392,9 +385,14 @@ def update_coin_historical_klines(history = coin_history_file):
     except:
         klines = None
 
-    for coin in get_all_tickers(paired_coin):
+    count = 0
+    all_tickers_current = get_all_tickers(paired_coin)
+    for coin in all_tickers_current:
+        
+        #print("Getting "+coin+paired_coin+" history data... " + str(round((count*100)/len(all_tickers_current))) + "%")
+        
         if klines is None or os.stat(history).st_size == 0 or coin not in list(klines) :
-            coins_history.update(get_coins_history([coin], paired_coin))
+            coins_history.update(get_coin_history(coin, paired_coin))
         else:
             try:
                 df = pd.DataFrame.from_records(klines[coin], columns=['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
@@ -407,10 +405,10 @@ def update_coin_historical_klines(history = coin_history_file):
                     coins_history[coin] = klines[coin]
                 else:
                     print(f"Invalid dates for {coin} - updating klines ...")
-                    coins_history.update(get_coins_history([coin], paired_coin))
+                    coins_history.update(get_coin_history(coin, paired_coin))
             except Exception as e:
                 print(f"Unable to update history with saved data for {coin} - {e}")
-                coins_history.update(get_coins_history([coin], paired_coin))
+                coins_history.update(get_coin_history(coin, paired_coin))
 
         # Keep klines with data for full date range
         if len(coins_history[coin]) != 0:
@@ -421,6 +419,8 @@ def update_coin_historical_klines(history = coin_history_file):
         if hindsight <= history_delta:
             print(f"Removing {coin} from list - Not enough hindsight ({round(hindsight,2)}/{history_delta})")
             del coins_history[coin]
+
+        count = count + 1
 
     # create folder structure
     if not os.path.exists(os.path.dirname(os.path.abspath(history))):
@@ -529,7 +529,7 @@ def update_top_ranked_coins():
           history = json.loads(response.text)
 
           try:
-              print(str(history['symbol']).upper() + ' ## ' + str(history['market_data']['total_volume']['usd']))
+              #print(str(history['symbol']).upper() + ' ## ' + str(history['market_data']['total_volume']['usd']))
               fullList[history['symbol'].upper()] = float(history['market_data']['total_volume']['usd'])
           except:
               #print(str(history['symbol']).upper() + ' ## unavailable!' )
@@ -547,7 +547,7 @@ def update_top_ranked_coins():
     with open(dirName + '/coinVolume.json', 'w') as outfile:
         json.dump(fullList, outfile)
 
-    print("Parsing top "+str(top_n_ranked_coins)+" coins...")
+    print("Parsing top "+str(top_n_ranked_coins)+" correlated coins...")
     try:
         with open(used_coins_file, 'w') as writer:
             # Sort shortList by value
