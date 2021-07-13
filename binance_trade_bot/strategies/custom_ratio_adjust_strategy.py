@@ -27,16 +27,22 @@ class Strategy(AutoTrader):
         self.config = config
         self.failed_buy_order = False
 
-        self.logger.info(f"CAUTION: The ratio_adjust strategy is still work in progress and can lead to losses! Use this strategy only if you know what you are doing, did alot of backtests and can live with possible losses.")
-        if self.config.ACCEPT_LOSSES != True:
-            self.logger.error("You need accept losses by setting accept_losses=true in the user.cfg or setting the enviroment variable ACCEPT_LOSSES to true in order to use this strategy!")
-            raise Exception()
+        #self.logger.info(f"CAUTION: The ratio_adjust strategy is still work in progress and can lead to losses! Use this strategy only if you know what you are doing, did alot of backtests and can live with possible losses.")
+        #if self.config.ACCEPT_LOSSES != True:
+        #    self.logger.error("You need accept losses by setting accept_losses=true in the user.cfg or setting the enviroment variable ACCEPT_LOSSES to true in order to use this strategy!")
+        #    raise Exception()
 
-        self.generate_new_coin_list()
+        try:
+            if len(self.config.SUPPORTED_COIN_LIST) > 2:
+                self.logger.info(f'Keeping current coin list until next refresh')
+                self.logger.info(f"Current coin list : {self.config.SUPPORTED_COIN_LIST}")
+        except:
+            self.generate_new_coin_list()
+
         super().initialize()
         self.reinit_threshold = self.manager.now().replace(second=0,
                                                            microsecond=0)
-        self.regenerate_coin_list = self.manager.now().replace(second=0,
+        self.regenerate_coin_list = self.manager.now().replace(hour=0,minute=0,second=0,
                                                            microsecond=0) + timedelta(days=1)
         #self.initialize_current_coin()
 
@@ -52,8 +58,8 @@ class Strategy(AutoTrader):
         if base_time >= coin_list_stale_treshhold:
             self.generate_new_coin_list()
             super().initialize()
-            self.regenerate_coin_list = self.manager.now().replace(
-                second=0, microsecond=0) + timedelta(days=1)
+            self.regenerate_coin_list = self.manager.now().replace(hour=0,minute=0,second=0,
+                                                           microsecond=0) + timedelta(days=1)
 
         #check if previous buy order failed. If so, bridge scout for a new coin.
         if self.failed_buy_order:
@@ -115,7 +121,7 @@ class Strategy(AutoTrader):
         except Exception as e:
             self.logger.info(f'Unable to generate "new_coin_list" : {e}')
             try:
-                if len(self.config.SUPPORTED_COIN_LIST) > 0:
+                if len(self.config.SUPPORTED_COIN_LIST) > 2:
                     self.logger.info(f'Keeping current coin list until next refresh')
                     self.logger.info(f"Current coin list : {self.config.SUPPORTED_COIN_LIST}")
                     return
