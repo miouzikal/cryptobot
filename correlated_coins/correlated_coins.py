@@ -450,7 +450,7 @@ def update_coin_historical_klines(history = coin_history_file):
         else:
             hindsight = 0
 
-        if hindsight <= history_delta:
+        if math.ceil(hindsight) < history_delta:
             print(f"Removing {coin} from list - Not enough hindsight ({math.ceil(hindsight)}/{history_delta})")
             del coins_history[coin]
 
