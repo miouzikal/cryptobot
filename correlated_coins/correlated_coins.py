@@ -15,8 +15,8 @@ binance_api_key = ""
 binance_api_secret_key = ""
 first_n_coins = 250
 top_n_ranked_coins = 100
-correlation_greater_than = 0.70
-correlation_less_than = 1
+correlation_greater_than = 0.75
+correlation_less_than = 0.95
 paired_coin = "BTC"
 history_end = datetime.now().astimezone(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 #history_end = (datetime.now().astimezone(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)) - timedelta(days = 1)
