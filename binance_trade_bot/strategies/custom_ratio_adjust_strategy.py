@@ -1,11 +1,7 @@
 import os, sys
-import random
 
-from binance_trade_bot.binance_api_manager import BinanceAPIManager
 from binance_trade_bot.auto_trader import AutoTrader
-from binance_trade_bot.config import Config
-from binance_trade_bot.database import Database, Pair, Coin, Trade
-from binance_trade_bot.logger import Logger
+from binance_trade_bot.database import Pair, Coin, Trade
 from binance_trade_bot import warmup_database
 
 from correlated_coins import correlated_coins
@@ -14,7 +10,6 @@ from collections import defaultdict
 from typing import List
 
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy.sql.expression import and_
 
 class Strategy(AutoTrader):
 
@@ -48,7 +43,7 @@ class Strategy(AutoTrader):
 
         self.reinit_threshold = self.manager.now().replace(second=0,
                                                            microsecond=0)
-        self.regenerate_coin_list = self.manager.now().replace(hour=0,minute=0,second=0,
+        self.regenerate_coin_list = self.manager.now().replace(hour=2,minute=0,second=0,
                                                            microsecond=0) + timedelta(days=1)
         #self.initialize_current_coin()
 
@@ -129,7 +124,7 @@ class Strategy(AutoTrader):
             try:
                 if len(self.config.SUPPORTED_COIN_LIST) > 2:
                     self.logger.info(f'Keeping current coin list until next refresh')
-                    self.logger.info(f"Current coin list : {self.config.SUPPORTED_COIN_LIST}")
+                    self.logger.info(f"Coin list : {self.config.SUPPORTED_COIN_LIST}")
                     return
             except:
                 self.logger.info(f'Empty coin list - Aborting!')
@@ -145,10 +140,25 @@ class Strategy(AutoTrader):
                         continue
                     new_coin_list.append(line)
 
+        if len(new_coin_list) < 6:
+            self.logger.info(f'Keeping current coin list until next refresh (New list too short)')
+            self.logger.info(f"Coin list : {self.config.SUPPORTED_COIN_LIST}")
+            return
+
         # Add current coin back in new list if not already there
         current_coin = self.db.get_current_coin()
         if current_coin is not None and current_coin.symbol not in new_coin_list:
             new_coin_list.append(current_coin.symbol)
+
+        # compare and show coin list differences
+        if len(self.config.SUPPORTED_COIN_LIST) > 0:
+            removed = list(set(self.config.SUPPORTED_COIN_LIST) - set(new_coin_list))
+            if len(removed) > 0:
+                self.logger.info(f"Removed: {removed}")
+
+            added = list(set(new_coin_list) - set(self.config.SUPPORTED_COIN_LIST ))
+            if len(added) > 0:
+                self.logger.info(f"Added: {added}")
 
         self.config.SUPPORTED_COIN_LIST = new_coin_list
         try:

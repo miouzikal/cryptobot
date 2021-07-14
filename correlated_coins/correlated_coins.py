@@ -13,8 +13,8 @@ from datetime import datetime, timezone, timedelta
 
 binance_api_key = ""
 binance_api_secret_key = ""
-first_n_coins = 150
-top_n_ranked_coins = 60
+first_n_coins = 250
+top_n_ranked_coins = 100
 correlation_greater_than = 0.70
 correlation_less_than = 1
 paired_coin = "BTC"
@@ -289,8 +289,8 @@ def get_all_correlated_list(history):
         correlated_coin_list.append(c['coin_a'])
         correlated_coin_list.append(c['coin_b'])
 
-    [filtered_correlated_coin_list.append(
-        x) for x in correlated_coin_list if x not in filtered_correlated_coin_list]
+    #[filtered_correlated_coin_list.append(
+    #    x) for x in correlated_coin_list if x not in filtered_correlated_coin_list]
 
     coin_by_volume = []
     if os.path.exists(used_coins_file):
@@ -310,9 +310,11 @@ def get_all_correlated_list(history):
     #print(list(valid_klines))
     #print(list(filtered_correlated_coin_list))
 
+    top_group = top_group_correlation(filtered_correlations)
+
     for coin in coin_by_volume:
         #if coin not in filtered_correlated_coin_list or coin not in list(valid_klines):
-        if coin in filtered_correlated_coin_list and coin in list(valid_klines):
+        if coin in sorted(top_group, key=len, reverse=True)[0] and coin in list(valid_klines):
             new_coin_list.append(coin)
 
     #print(sorted(filtered_correlated_coin_list))
@@ -320,7 +322,8 @@ def get_all_correlated_list(history):
     try:
         with open('supported_coin_list', 'w') as writer:
             # save top 40 to file
-            for coin in new_coin_list[:40]:
+            #for coin in new_coin_list[:40]:
+            for coin in new_coin_list:
                     writer.write(coin+'\n')
 
         print("supported_coin_list updated successfully!")
@@ -361,6 +364,37 @@ def group_correlations(correlations):
         print("Group "+str(i+1)+":")
         print(sorted(coin_groups[i]))
 
+def top_group_correlation(correlations):
+    l = [(c["coin_a"], c["coin_b"])
+         for c in correlations]
+    pool = set(map(frozenset, l))
+    groups = []
+    coin_groups = []
+    while pool:
+        group = set()
+        groups.append([])
+        while True:
+            for candidate in pool:
+                if not group or group & candidate:
+                    group |= candidate
+                    groups[-1].append(tuple(candidate))
+                    pool.remove(candidate)
+                    break
+            else:
+                break
+
+    for g in groups:
+        separated = []
+        coin_list = []
+        for c in g:
+            separated.append(c[0])
+            separated.append(c[1])
+        for x in separated:
+            if(x not in coin_list):
+                coin_list.append(x)
+        coin_groups.append(coin_list)
+
+    return coin_groups
 
 def verify_coins_files(history = coin_history_file, used = used_coins_file):
     if not os.path.isfile(history):
@@ -417,7 +451,7 @@ def update_coin_historical_klines(history = coin_history_file):
             hindsight = 0
 
         if hindsight <= history_delta:
-            print(f"Removing {coin} from list - Not enough hindsight ({round(hindsight,2)}/{history_delta})")
+            print(f"Removing {coin} from list - Not enough hindsight ({math.ceil(hindsight)}/{history_delta})")
             del coins_history[coin]
 
         count = count + 1

@@ -4,8 +4,8 @@ from binance_trade_bot import backtest
 
 if __name__ == "__main__":
     history = []
-    start_time = datetime(2021, 7, 1, 0, 0)
-    end_time = datetime(2021, 7, 12, 0, 0)
+    start_time = datetime(2021, 1, 1, 0, 0)
+    end_time = datetime(2021, 1, 2, 1, 0)
     print(f"BACKTEST from {start_time} to {end_time}")
     current_date = start_time.strftime("%d/%m/%Y")
     for manager in backtest(start_time, end_time):
