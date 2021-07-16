@@ -423,7 +423,7 @@ def update_coin_historical_klines(history = coin_history_file):
     all_tickers_current = get_all_tickers(paired_coin)
     for coin in all_tickers_current:
         
-        #print("Getting "+coin+paired_coin+" history data... " + str(round((count*100)/len(all_tickers_current))) + "%")
+        print("Getting "+coin+paired_coin+" history data... " + str(round((count*100)/len(all_tickers_current))) + "%")
         
         if klines is None or os.stat(history).st_size == 0 or coin not in list(klines) :
             coins_history.update(get_coin_history(coin, paired_coin))
@@ -563,10 +563,10 @@ def update_top_ranked_coins():
           history = json.loads(response.text)
 
           try:
-              #print(str(history['symbol']).upper() + ' ## ' + str(history['market_data']['total_volume']['usd']))
+              print(str(history['symbol']).upper() + ' ## ' + str(history['market_data']['total_volume']['usd']))
               fullList[history['symbol'].upper()] = float(history['market_data']['total_volume']['usd'])
           except:
-              #print(str(history['symbol']).upper() + ' ## unavailable!' )
+              print(str(history['symbol']).upper() + ' ## unavailable!' )
               continue
 
           time.sleep(1.5)
@@ -626,7 +626,8 @@ def main(args):
       try:
         paired_coin = str(args["paired_coin"][0])
       except:
-        pass
+        print(f'Paired Coin must be a string given : {paired_coin}')
+        exit()
 
     if history_start is None:
       history_start = (history_end - timedelta(days = history_delta))

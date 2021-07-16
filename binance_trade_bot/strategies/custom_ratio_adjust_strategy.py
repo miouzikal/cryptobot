@@ -91,8 +91,6 @@ class Strategy(AutoTrader):
         self.logger.info("Updating coin_list ...")
         try:
             correlated_coins.main({
-                'paired_coin':
-                self.config.BRIDGE.symbol,
                 'update_coins_history':
                 True,
                 'update_top_coins':
@@ -388,16 +386,16 @@ class Strategy(AutoTrader):
                             from_coin_price = self.manager.get_ticker_price(coin.symbol + self.config.BRIDGE.symbol)
                             minimum_quantity = self.manager._buy_quantity(coin.symbol, self.config.BRIDGE.symbol, new_start_amount, from_coin_price)
 
-                    if coin.symbol != self.config.BRIDGE.symbol:
-                        if coin.symbol in list(self.config.START_AMOUNT):
-                            if minimum_quantity >= self.config.START_AMOUNT[coin.symbol]:
-                                self.config.START_AMOUNT[coin.symbol] = minimum_quantity
-                                self.logger.info(f"Updating START_AMOUNT for {coin.symbol} : {minimum_quantity}")
+                        if coin.symbol != self.config.BRIDGE.symbol:
+                            if coin.symbol in list(self.config.START_AMOUNT):
+                                if minimum_quantity >= self.config.START_AMOUNT[coin.symbol]:
+                                    self.config.START_AMOUNT[coin.symbol] = minimum_quantity
+                                    self.logger.info(f"Updating START_AMOUNT for {coin.symbol} : {minimum_quantity}")
+                                else:
+                                    self.logger.info(f"Skipping START_AMOUNT as saved value ({self.config.START_AMOUNT[coin.symbol]}) is greater than minimum_quantity ({minimum_quantity})")
                             else:
-                                self.logger.info(f"Skipping START_AMOUNT as saved value ({self.config.START_AMOUNT[coin.symbol]}) is greater than minimum_quantity ({minimum_quantity})")
-                        else:
-                            self.config.START_AMOUNT[coin.symbol] = minimum_quantity
-                            self.logger.info(f"Setting START_AMOUNT for {coin.symbol} : {minimum_quantity}")
+                                self.config.START_AMOUNT[coin.symbol] = minimum_quantity
+                                self.logger.info(f"Setting START_AMOUNT for {coin.symbol} : {minimum_quantity}")
 
         except Exception as e:
             self.logger.info(f"Unable to save minimum quantity - {e}")

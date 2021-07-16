@@ -468,8 +468,8 @@ class BinanceAPIManager:
                 minimum_quantity = self.config.START_AMOUNT[origin_symbol]
                 self.logger.info(f"Using START_AMOUNT for Minimum Quantity: {self.config.START_AMOUNT[origin_symbol]}")
             except Exception as e:
-                self.logger.info(f"Unable to get START_AMOUNT for {e}")
-                minimum_quantity = 0
+                self.logger.info(f"Unable to get START_AMOUNT for {origin_symbol}, cancel buy")
+                return None
 
         minimum_order = minimum_quantity + (fee * 2)
         self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Min. Order (+2xfee): {minimum_order}")
