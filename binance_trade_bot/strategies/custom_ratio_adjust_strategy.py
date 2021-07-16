@@ -338,7 +338,7 @@ class Strategy(AutoTrader):
                 bridge_balance = self.estimate_bridge_balance_from_current_coin()
 
                 raw_quantity = self.manager._buy_quantity(best_pair.from_coin.symbol, self.config.BRIDGE.symbol, bridge_balance, to_coin_price) or 0
-                fee = raw_quantity * self.manager.get_fee(best_pair.from_coin.symbol, self.config.BRIDGE.symbol, False)      
+                fee = raw_quantity * self.manager.get_fee(best_pair.from_coin, self.config.BRIDGE, False)      
                 order_quantity = raw_quantity - fee
 
                 minimum_quantity = self.config.START_AMOUNT[best_pair.to_coin.symbol]
@@ -409,7 +409,7 @@ class Strategy(AutoTrader):
             if self.manager.get_currency_balance(current_coin.symbol) > self.manager.get_min_notional(current_coin.symbol, self.config.BRIDGE.symbol):
                 sell_quantity = self.manager._sell_quantity(current_coin.symbol, self.config.BRIDGE.symbol)
                 sell_price = self.manager.get_sell_price(current_coin.symbol + self.config.BRIDGE.symbol)
-                fee = sell_quantity * self.manager.get_fee(current_coin.symbol, self.config.BRIDGE.symbol, True)      
+                fee = sell_quantity * self.manager.get_fee(current_coin, self.config.BRIDGE, True)      
                 coin_to_bridge_balance = (sell_quantity - fee ) * sell_price
 
                 print(f"SELL_QUANTITY: {sell_quantity}")
