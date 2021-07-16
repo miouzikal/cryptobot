@@ -450,17 +450,24 @@ class BinanceAPIManager:
         session: Session
         with self.db.db_session() as session:
             try:
-
                 trade = session.query(Trade).filter(Trade.alt_coin_id == origin_symbol).filter(Trade.selling == False).order_by(Trade.datetime.desc()).limit(1).one().info()
-                if trade:
-                    last_bought_quantity = float(trade['alt_trade_amount'])
+                minimum_quantity = float(trade['alt_trade_amount'])
             except Exception as e:
-                #print(f"Unable to read last trade Amount - {e}")
-                last_bought_quantity = 0
+                self.logger.info(f"Unable to read last trade Amount - {e}")
+                minimum_quantity = 0
 
         fee = order_quantity * self.get_fee(origin_coin, target_coin, False)
-        minimum_order = last_bought_quantity + (fee * 2)
-        #self.logger.info(f"last: {last_bought_quantity} | fees: | {fee} | order: {minimum_order}")
+
+        if minimum_quantity is None or minimum_quantity == 0:
+            try:
+                minimum_quantity = self.config.START_AMOUNT[origin_symbol]
+                self.logger.info(f"Using START_AMOUNT as base for Minimum Quantity: {minimum_quantity}")
+            except Exception as e:
+                self.logger.info(f"Unable to get START_AMOUNT! - {e}")
+                minimum_quantity = 0
+
+        minimum_order = minimum_quantity + (fee * 2)
+        self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Min. Order (+2xfee): {minimum_order}")
 
         if order_quantity < minimum_order:
             self.logger.info("Unprofitable trade, cancel buy")

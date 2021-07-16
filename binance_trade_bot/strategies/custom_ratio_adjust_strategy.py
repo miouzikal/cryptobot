@@ -13,23 +13,7 @@ from sqlalchemy.orm import Session, aliased
 
 class Strategy(AutoTrader):
 
-    #def initialize(self, binance_manager: BinanceAPIManager, database: Database,
-    #             logger: Logger, config: Config):
-
     def initialize(self):        
-        '''     
-        self.manager = binance_manager
-        self.db = database
-        self.logger = logger
-        self.config = config
-        self.failed_buy_order = False
-        '''
-
-        #self.logger.info(f"CAUTION: The ratio_adjust strategy is still work in progress and can lead to losses! Use this strategy only if you know what you are doing, did alot of backtests and can live with possible losses.")
-        #if self.config.ACCEPT_LOSSES != True:
-        #    self.logger.error("You need accept losses by setting accept_losses=true in the user.cfg or setting the enviroment variable ACCEPT_LOSSES to true in order to use this strategy!")
-        #    raise Exception()
-
         try:
             if len(self.config.SUPPORTED_COIN_LIST) > 2:
                 self.logger.info(f'Keeping current coin list until next refresh')
@@ -41,11 +25,14 @@ class Strategy(AutoTrader):
 
         super().initialize()
 
+        self.logger.info(f'Updating Minimum Quantity ...')
+        self.config.START_AMOUNT = {}
+        self.set_minimum_quantity()
+
         self.reinit_threshold = self.manager.now().replace(second=0,
                                                            microsecond=0)
-        self.regenerate_coin_list = self.manager.now().replace(hour=2,minute=0,second=0,
+        self.regenerate_coin_list = self.manager.now().replace(hour=4,minute=0,second=0,
                                                            microsecond=0) + timedelta(days=1)
-        #self.initialize_current_coin()
 
     def scout(self):        
         base_time: datetime = self.manager.now()
@@ -59,7 +46,9 @@ class Strategy(AutoTrader):
         if base_time >= coin_list_stale_treshhold:
             self.generate_new_coin_list()
             super().initialize()
-            self.regenerate_coin_list = self.manager.now().replace(hour=0,minute=0,second=0,
+            self.logger.info(f'Updating Minimum Quantity ...')
+            self.set_minimum_quantity()
+            self.regenerate_coin_list = self.manager.now().replace(hour=4,minute=0,second=0,
                                                            microsecond=0) + timedelta(days=1)
 
         #check if previous buy order failed. If so, bridge scout for a new coin.
@@ -142,8 +131,12 @@ class Strategy(AutoTrader):
 
         if len(new_coin_list) < 6:
             self.logger.info(f'Keeping current coin list until next refresh (New list too short)')
-            self.logger.info(f"Coin list : {self.config.SUPPORTED_COIN_LIST}")
-            return
+            if len(self.config.SUPPORTED_COIN_LIST) > 0:
+                self.logger.info(f"Coin list : {self.config.SUPPORTED_COIN_LIST}")
+                return
+            else:
+                self.logger.info(f'Empty coin list - Aborting!')
+                sys.exit()
 
         # Add current coin back in new list if not already there
         current_coin = self.db.get_current_coin()
@@ -380,3 +373,49 @@ class Strategy(AutoTrader):
                 else:
                     #self.logger.info(f"Skip | {best_pair.from_coin.symbol} -> {best_pair.to_coin.symbol} | order : ({order_quantity}) / last trade : ({last_bought_amount})")
                     continue
+
+    def set_minimum_quantity(self):
+        # calculate estimated bridge balance from current coin
+        bridge_balance_from_coin = 0
+        current_coin = self.db.get_current_coin()
+        if current_coin is not None:
+            if self.manager.get_currency_balance(current_coin.symbol) > self.manager.get_min_notional(current_coin.symbol, self.config.BRIDGE.symbol):
+                current_coin_balance = self.manager.get_currency_balance(current_coin.symbol)
+                sell_price = self.manager.get_ticker_price(current_coin.symbol + self.config.BRIDGE.symbol)
+                bridge_balance_from_coin = current_coin_balance * sell_price
+                """
+                print(f"{current_coin}")
+                print(f"{self.manager.get_currency_balance(current_coin.symbol)}")
+                print(f"{self.manager.get_min_notional(current_coin.symbol, self.config.BRIDGE.symbol)}")
+                print(f"{sell_price}")
+                print(f"Bridge balance: {bridge_balance_from_coin}")
+                """
+            else:
+                self.logger.info(f"Not enough {current_coin} to trade")
+
+        new_start_amount = self.manager.get_currency_balance(self.config.BRIDGE.symbol) + bridge_balance_from_coin
+        self.logger.info(f"{self.config.BRIDGE} start_amount: {new_start_amount}")
+
+        try: 
+            old_start_amount = self.config.START_AMOUNT[self.config.BRIDGE.symbol]
+            percent_change = ((new_start_amount - old_start_amount) / old_start_amount) * 100
+            if old_start_amount > new_start_amount:
+                self.logger.info(f"Lost {round(percent_change,2)}% ... Keeping Minimum Quantity unchanged")
+                return
+            else:
+                self.logger.info(f"Gained {round(percent_change,2)}% ... Updating Minimum Quantity ...")
+                self.config.START_AMOUNT[self.config.BRIDGE.symbol] = new_start_amount    
+        except:
+            self.config.START_AMOUNT[self.config.BRIDGE.symbol] = new_start_amount    
+
+        try:
+            session: Session
+            with self.db.db_session() as session:
+                for coin in session.query(Coin).all():
+                    if coin.enabled:
+                        from_coin_price = self.manager.get_ticker_price(coin.symbol + self.config.BRIDGE.symbol)
+                        minimum_quantity = self.manager._buy_quantity(coin.symbol, self.config.BRIDGE.symbol, new_start_amount, from_coin_price)
+                        self.config.START_AMOUNT[coin.symbol] = minimum_quantity
+        except Exception as e:
+            self.logger.info(f"Unable to save minimum quantity - {e}")
+            return
