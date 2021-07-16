@@ -34,7 +34,7 @@ class Strategy(AutoTrader):
         self.regenerate_coin_list = self.manager.now().replace(hour=4,minute=0,second=0,
                                                            microsecond=0) + timedelta(days=1)
 
-    def scout(self):        
+    def scout(self):
         base_time: datetime = self.manager.now()
         allowed_idle_time = self.reinit_threshold
         coin_list_stale_treshhold = self.regenerate_coin_list
@@ -91,6 +91,8 @@ class Strategy(AutoTrader):
         self.logger.info("Updating coin_list ...")
         try:
             correlated_coins.main({
+                'paired_coin':
+                self.config.BRIDGE.symbol,
                 'update_coins_history':
                 True,
                 'update_top_coins':
@@ -332,78 +334,42 @@ class Strategy(AutoTrader):
                 else:
                     best_pair = pair
 
-                from_coin_balance = self.manager.get_currency_balance(best_pair.from_coin.symbol)
-                from_coin_price = self.manager.get_ticker_price(best_pair.from_coin.symbol + self.config.BRIDGE.symbol)
-                to_coin_price = self.manager.get_ticker_price(best_pair.to_coin.symbol + self.config.BRIDGE.symbol)
+                to_coin_price = self.manager.get_sell_price(best_pair.to_coin.symbol + self.config.BRIDGE.symbol)
+                bridge_balance = self.estimate_bridge_balance_from_current_coin()
 
-                session: Session
-                with self.db.db_session() as session:
-                    try:
-                        trade = session.query(Trade).filter(Trade.alt_coin_id == best_pair.to_coin.symbol).filter(Trade.selling == False).order_by(Trade.datetime.desc()).limit(1).one().info()
-                        if trade:
-                           last_bought_amount = float(trade['alt_trade_amount'])
-                    except:
-                      #print(f"Unable to read last trade Amount - {e}")
-                      last_bought_amount = 0
+                raw_quantity = self.manager._buy_quantity(best_pair.from_coin.symbol, self.config.BRIDGE.symbol, bridge_balance, to_coin_price) or 0
+                fee = raw_quantity * self.manager.get_fee(best_pair.from_coin.symbol, self.config.BRIDGE.symbol, False)      
+                order_quantity = raw_quantity - fee
 
-                if from_coin_balance is not None and from_coin_balance * from_coin_price > self.manager.get_min_notional(best_pair.from_coin.symbol, self.config.BRIDGE.symbol):
-                    raw_bridge_balance = from_coin_balance * from_coin_price
-                    bridge_balance = raw_bridge_balance - (raw_bridge_balance * 0.002)
-                else:
-                    bridge_balance = self.manager.get_currency_balance(self.config.BRIDGE.symbol)
+                minimum_quantity = self.config.START_AMOUNT[best_pair.to_coin.symbol]
 
-                #print(f"STRATEGY: _buy_quantity({best_pair.from_coin.symbol}, {self.config.BRIDGE.symbol}, {bridge_balance}, {to_coin_price})")
-                order_quantity = self.manager._buy_quantity(best_pair.from_coin.symbol, self.config.BRIDGE.symbol, bridge_balance, to_coin_price)
-                if not float(order_quantity):
-                    order_quantity = 0
-
-                if last_bought_amount > 0:
-                    pct_gain = ((order_quantity - last_bought_amount) / last_bought_amount)*100
-                else:
-                    pct_gain = 0
-                if last_bought_amount > 0:
-                    pct_gain = ((order_quantity - last_bought_amount) / last_bought_amount)*100
+                if minimum_quantity > 0:
+                    pct_gain = ((order_quantity - minimum_quantity) / minimum_quantity) * 100
                 else:
                     pct_gain = 0
 
-                if order_quantity > last_bought_amount and (last_bought_amount == 0 or pct_gain > 1.2):
-                    self.logger.info(f"Jump | {best_pair.from_coin.symbol} -> {best_pair.to_coin.symbol} | estimated gain : {round(pct_gain,2)}%")
+                if order_quantity > minimum_quantity and pct_gain > 1.2:
+                    self.logger.info(f"Jump | {best_pair.from_coin.symbol} -> {best_pair.to_coin.symbol} | Min. Order : {minimum_quantity} ({round(pct_gain,2)}%)")
                     self.transaction_through_bridge(best_pair, coin_price, prices[best_pair.to_coin_id])
                     break
                 else:
-                    #self.logger.info(f"Skip | {best_pair.from_coin.symbol} -> {best_pair.to_coin.symbol} | order : ({order_quantity}) / last trade : ({last_bought_amount})")
+                    self.logger.info(f"Skip | {best_pair.from_coin.symbol} -> {best_pair.to_coin.symbol} | Order : ({order_quantity}) / Min. Order : ({minimum_quantity})")
                     continue
 
     def set_minimum_quantity(self):
         # calculate estimated bridge balance from current coin
-        bridge_balance_from_coin = 0
-        current_coin = self.db.get_current_coin()
-        if current_coin is not None:
-            if self.manager.get_currency_balance(current_coin.symbol) > self.manager.get_min_notional(current_coin.symbol, self.config.BRIDGE.symbol):
-                current_coin_balance = self.manager.get_currency_balance(current_coin.symbol)
-                sell_price = self.manager.get_ticker_price(current_coin.symbol + self.config.BRIDGE.symbol)
-                bridge_balance_from_coin = current_coin_balance * sell_price
-                """
-                print(f"{current_coin}")
-                print(f"{self.manager.get_currency_balance(current_coin.symbol)}")
-                print(f"{self.manager.get_min_notional(current_coin.symbol, self.config.BRIDGE.symbol)}")
-                print(f"{sell_price}")
-                print(f"Bridge balance: {bridge_balance_from_coin}")
-                """
-            else:
-                self.logger.info(f"Not enough {current_coin} to trade")
+        bridge_balance_from_coin = self.estimate_bridge_balance_from_current_coin()
 
         new_start_amount = self.manager.get_currency_balance(self.config.BRIDGE.symbol) + bridge_balance_from_coin
-        self.logger.info(f"{self.config.BRIDGE} start_amount: {new_start_amount}")
+        self.logger.info(f"{self.config.BRIDGE} START_AMOUNT: {new_start_amount}")
 
         try: 
             old_start_amount = self.config.START_AMOUNT[self.config.BRIDGE.symbol]
             percent_change = ((new_start_amount - old_start_amount) / old_start_amount) * 100
             if old_start_amount > new_start_amount:
-                self.logger.info(f"Lost {round(percent_change,2)}% ... Keeping Minimum Quantity unchanged")
-                return
+                self.logger.info(f"Lost {round(percent_change,2)}% ... Keeping {self.config.BRIDGE} START_AMOUNT unchanged")
             else:
-                self.logger.info(f"Gained {round(percent_change,2)}% ... Updating Minimum Quantity ...")
+                self.logger.info(f"Gained {round(percent_change,2)}% ... Updating {self.config.BRIDGE} START_AMOUNT")
                 self.config.START_AMOUNT[self.config.BRIDGE.symbol] = new_start_amount    
         except:
             self.config.START_AMOUNT[self.config.BRIDGE.symbol] = new_start_amount    
@@ -413,9 +379,44 @@ class Strategy(AutoTrader):
             with self.db.db_session() as session:
                 for coin in session.query(Coin).all():
                     if coin.enabled:
-                        from_coin_price = self.manager.get_ticker_price(coin.symbol + self.config.BRIDGE.symbol)
-                        minimum_quantity = self.manager._buy_quantity(coin.symbol, self.config.BRIDGE.symbol, new_start_amount, from_coin_price)
+                        try:
+                            trade = session.query(Trade).filter(Trade.alt_coin_id == coin.symbol).filter(Trade.selling == False).order_by(Trade.datetime.desc()).limit(1).one().info()
+                            minimum_quantity = float(trade['alt_trade_amount'])
+                        except Exception as e:
+                            self.logger.info(f"Unable to read last trade Amount for {coin.symbol} - {e}")
+                            self.logger.info(f"Using Bridge START_AMOUNT as base for Minimum Quantity: {new_start_amount}")
+                            from_coin_price = self.manager.get_ticker_price(coin.symbol + self.config.BRIDGE.symbol)
+                            minimum_quantity = self.manager._buy_quantity(coin.symbol, self.config.BRIDGE.symbol, new_start_amount, from_coin_price)
+
+                    if coin.symbol in list(self.config.START_AMOUNT):
+                        if minimum_quantity >= self.config.START_AMOUNT[coin.symbol]:
+                            self.config.START_AMOUNT[coin.symbol] = minimum_quantity
+                            self.logger.info(f"Updating START_AMOUNT for {coin.symbol} : {minimum_quantity}")
+                        else:
+                            self.logger.info(f"Skipping START_AMOUNT as saved value ({self.config.START_AMOUNT[coin.symbol]}) is greater than minimum_quantity ({minimum_quantity})")
+                    else:
                         self.config.START_AMOUNT[coin.symbol] = minimum_quantity
+                        self.logger.info(f"Setting START_AMOUNT for {coin.symbol} : {minimum_quantity}")
+
         except Exception as e:
             self.logger.info(f"Unable to save minimum quantity - {e}")
             return
+
+    def estimate_bridge_balance_from_current_coin(self):
+        coin_to_bridge_balance = 0
+        current_coin = self.db.get_current_coin()
+        if current_coin is not None:
+            if self.manager.get_currency_balance(current_coin.symbol) > self.manager.get_min_notional(current_coin.symbol, self.config.BRIDGE.symbol):
+                sell_quantity = self.manager._sell_quantity(current_coin.symbol, self.config.BRIDGE.symbol)
+                sell_price = self.manager.get_sell_price(current_coin.symbol + self.config.BRIDGE.symbol)
+                fee = sell_quantity * self.manager.get_fee(current_coin.symbol, self.config.BRIDGE.symbol, True)      
+                coin_to_bridge_balance = (sell_quantity - fee ) * sell_price
+
+                print(f"SELL_QUANTITY: {sell_quantity}")
+                print(f"SELL_PRICE: {sell_price}")
+                print(f"FEE: {fee}")
+                print(f"COIN_TO_BRIDGE_BALANCE: {coin_to_bridge_balance}")
+            #else:
+            #    self.logger.info(f"Not enough {current_coin}")
+
+        return coin_to_bridge_balance

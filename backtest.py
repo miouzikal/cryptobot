@@ -4,11 +4,12 @@ from binance_trade_bot import backtest
 
 if __name__ == "__main__":
     history = []
-    start_time = datetime(2021, 1, 1, 0, 0)
-    end_time = datetime(2021, 1, 2, 1, 0)
+    start_time = datetime(2021, 7, 1, 0, 0)
+    end_time = datetime(2021, 7, 14, 0, 0)
+    start_balances = {"BTC": 1000}
     print(f"BACKTEST from {start_time} to {end_time}")
     current_date = start_time.strftime("%d/%m/%Y")
-    for manager in backtest(start_time, end_time):
+    for manager in backtest(start_time, end_time, 1, 100, start_balances):
         btc_value = manager.collate_coins("BTC")
         bridge_value = manager.collate_coins(manager.config.BRIDGE.symbol)
         btc_fees_value = manager.collate_fees("BTC")

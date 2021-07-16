@@ -454,16 +454,21 @@ class BinanceAPIManager:
                 minimum_quantity = float(trade['alt_trade_amount'])
             except Exception as e:
                 self.logger.info(f"Unable to read last trade Amount - {e}")
-                minimum_quantity = 0
+                try:
+                    minimum_quantity = self.config.START_AMOUNT[origin_symbol]
+                    self.logger.info(f"Using START_AMOUNT for Minimum Quantity: {self.config.START_AMOUNT[origin_symbol]}")
+                except Exception as e:
+                    self.logger.info(f"Unable to get START_AMOUNT  {e}")
+                    minimum_quantity = 0
 
         fee = order_quantity * self.get_fee(origin_coin, target_coin, False)
 
         if minimum_quantity is None or minimum_quantity == 0:
             try:
                 minimum_quantity = self.config.START_AMOUNT[origin_symbol]
-                self.logger.info(f"Using START_AMOUNT as base for Minimum Quantity: {minimum_quantity}")
+                self.logger.info(f"Using START_AMOUNT for Minimum Quantity: {self.config.START_AMOUNT[origin_symbol]}")
             except Exception as e:
-                self.logger.info(f"Unable to get START_AMOUNT! - {e}")
+                self.logger.info(f"Unable to get START_AMOUNT for {e}")
                 minimum_quantity = 0
 
         minimum_order = minimum_quantity + (fee * 2)
@@ -507,6 +512,9 @@ class BinanceAPIManager:
             return None
 
         self.logger.info(f"Bought {origin_symbol}")
+        # updating minimum_quantity in memory
+        self.logger.info(f"Updating START_AMOUNT for {origin_symbol} : {order_quantity}")
+        self.config.START_AMOUNT[origin_symbol] = order_quantity
 
         trade_log.set_complete(order.cumulative_quote_qty)
 
