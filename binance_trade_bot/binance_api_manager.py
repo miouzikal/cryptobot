@@ -475,7 +475,7 @@ class BinanceAPIManager:
         self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Min. Order (+2xfee): {minimum_order}")
 
         if order_quantity < minimum_order:
-            self.logger.info("Unprofitable trade, cancel buy")
+            self.logger.info(f"Unprofitable trade ({order_quantity}), cancel buy")
             return None
 
         self.logger.info(f"BUY QTY {order_quantity} of <{origin_symbol}>")

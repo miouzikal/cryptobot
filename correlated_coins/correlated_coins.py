@@ -502,7 +502,7 @@ def update_top_ranked_coins():
     for coin in raw_list:
       ignored_coins.append(coin['symbol'].upper())
 
-    # get compond token list
+    # get aave token list
     url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=aave-tokens&order=market_cap_desc&per_page=250&page=1&sparkline=false'
     session = Session()
     session.headers.update(headers)
