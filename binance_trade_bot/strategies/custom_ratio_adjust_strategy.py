@@ -351,7 +351,7 @@ class Strategy(AutoTrader):
                     self.transaction_through_bridge(best_pair, coin_price, prices[best_pair.to_coin_id])
                     break
                 else:
-                    self.logger.info(f"Skip | {best_pair.from_coin.symbol} -> {best_pair.to_coin.symbol} | Order : ({order_quantity}) / Min. Order : ({minimum_quantity})")
+                    #self.logger.info(f"Skip | {best_pair.from_coin.symbol} -> {best_pair.to_coin.symbol} | Order : ({order_quantity}) / Min. Order : ({minimum_quantity})")
                     continue
 
     def set_minimum_quantity(self):
@@ -392,7 +392,7 @@ class Strategy(AutoTrader):
                                     self.config.START_AMOUNT[coin.symbol] = minimum_quantity
                                     self.logger.info(f"Updating START_AMOUNT for {coin.symbol} : {minimum_quantity}")
                                 else:
-                                    self.logger.info(f"Skipping START_AMOUNT as saved value ({self.config.START_AMOUNT[coin.symbol]}) is greater than minimum_quantity ({minimum_quantity})")
+                                    self.logger.info(f"Skipping START_AMOUNT for {coin.symbol} as saved value ({self.config.START_AMOUNT[coin.symbol]}) is greater than minimum_quantity ({minimum_quantity})")
                             else:
                                 self.config.START_AMOUNT[coin.symbol] = minimum_quantity
                                 self.logger.info(f"Setting START_AMOUNT for {coin.symbol} : {minimum_quantity}")
