@@ -53,7 +53,7 @@ class AutoTrader:
 
         self.logger.info("Couldn't buy, going back to scouting mode...")
         self.failed_buy_order = True
-        self.logger.info(f"Reverting to previous START_AMOUNT ({self.config.PREVIOUS_AMOUNT[pair.to_coin.symbol]})")
+        self.logger.info(f"Reverting to previous START_AMOUNT for {pair.to_coin} ({self.config.PREVIOUS_AMOUNT[pair.to_coin.symbol]})")
         self.config.START_AMOUNT[pair.to_coin.symbol] = self.config.PREVIOUS_AMOUNT[pair.to_coin.symbol]
         return None
 
