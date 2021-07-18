@@ -454,10 +454,8 @@ class BinanceAPIManager:
             self.logger.info(f"Unable to get START_AMOUNT for {origin_symbol}, cancel buy")
             return None
 
-        fee = order_quantity * self.get_fee(origin_coin, target_coin, False)
+        fee = minimum_quantity * self.get_fee(origin_coin, target_coin, False)
 
-        #minimum_order = minimum_quantity + (fee * 2)
-        #self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Min. Order (+2xfee): {minimum_order}")
         minimum_order = minimum_quantity + fee
         self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Order (Min.+fee): {minimum_order}")
 

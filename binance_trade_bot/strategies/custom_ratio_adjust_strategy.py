@@ -172,9 +172,41 @@ class Strategy(AutoTrader):
         ):
             # Only scout if we don't have enough of the current coin
             return
-        new_coin = super().bridge_scout()
-        if new_coin is not None:
-            self.db.set_current_coin(new_coin)
+
+        """
+        If we have any bridge coin leftover, buy a coin with it that we won't immediately trade out of
+        """
+        bridge_balance = self.manager.get_currency_balance(self.config.BRIDGE.symbol)
+
+        for coin in self.db.get_coins():
+            current_coin_price = self.manager.get_sell_price(coin + self.config.BRIDGE)
+
+            if current_coin_price is None:
+                continue
+
+            ratio_dict, _ = self._get_ratios(coin, current_coin_price)
+            if not any(v > 0 for v in ratio_dict.values()):
+                if bridge_balance > self.manager.get_min_notional(coin.symbol, self.config.BRIDGE.symbol):
+                    order_quantity = self.manager._buy_quantity(coin.symbol, self.config.BRIDGE.symbol, bridge_balance, current_coin_price) or 0
+   
+                    minimum_quantity = self.config.START_AMOUNT[coin.symbol]
+
+                    if minimum_quantity > 0:
+                        pct_gain = ((order_quantity - minimum_quantity) / minimum_quantity) * 100
+                    else:
+                        pct_gain = 0
+
+                    if order_quantity > minimum_quantity:
+                        self.logger.info(f"BRIDGE_SCOUT: Buy {coin.symbol} | Order : ({minimum_quantity}) -> ({order_quantity}) ({round(pct_gain,2)}%)")
+                        result = self.manager.buy_alt(coin, self.config.BRIDGE, current_coin_price)
+                        if result is not None:
+                            self.db.set_current_coin(coin)
+                            self.failed_buy_order = False
+                            return coin
+                        else:
+                            self.failed_buy_order = True
+                    else:
+                        continue
 
     def initialize_current_coin(self):
         """
@@ -352,9 +384,9 @@ class Strategy(AutoTrader):
                     pct_gain = 0
 
                 if order_quantity > minimum_quantity and pct_gain > 1.2:
-                    self.logger.info(f"Jump to {best_pair.to_coin.symbol} | Order : ({minimum_quantity}) -> ({order_quantity}) ({round(pct_gain,2)}%)")
+                    self.logger.info(f"Jump to {best_pair.to_coin} | Order : ({minimum_quantity}) -> ({order_quantity}) ({round(pct_gain,2)}%)")
                     # Update minimum_quantity to guarantee gain
-                    self.logger.info(f"Updating {best_pair.to_coin.symbol} START_AMOUNT to {order_quantity} ...")
+                    self.logger.info(f"Updating {best_pair.to_coin} START_AMOUNT to {order_quantity} ...")
                     self.config.START_AMOUNT[best_pair.to_coin.symbol] = order_quantity    
                     self.transaction_through_bridge(best_pair, coin_price, prices[best_pair.to_coin_id])
                     break
@@ -418,11 +450,12 @@ class Strategy(AutoTrader):
                 sell_price = self.manager.get_sell_price(current_coin.symbol + self.config.BRIDGE.symbol)
                 fee = sell_quantity * self.manager.get_fee(current_coin, self.config.BRIDGE, True)      
                 coin_to_bridge_balance = (sell_quantity - fee ) * sell_price
-
+                """
                 print(f"SELL_QUANTITY: {sell_quantity}")
                 print(f"SELL_PRICE: {sell_price}")
                 print(f"FEE: {fee}")
                 print(f"COIN_TO_BRIDGE_BALANCE: {coin_to_bridge_balance}")
+                """
             #else:
             #    self.logger.info(f"Not enough {current_coin}")
 

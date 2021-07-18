@@ -90,10 +90,8 @@ class MockBinanceManager(BinanceAPIManager):
             self.logger.info(f"Unable to get START_AMOUNT for {origin_symbol}, cancel buy")
             return None
 
-        fee = order_quantity * self.get_fee(origin_coin, target_coin, False)
+        fee = minimum_quantity * self.get_fee(origin_coin, target_coin, False)
 
-        #minimum_order = minimum_quantity + (fee * 2)
-        #self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Min. Order (+2xfee): {minimum_order}")
         minimum_order = minimum_quantity + fee
         self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Order (Min.+fee): {minimum_order}")
 
@@ -120,11 +118,11 @@ class MockBinanceManager(BinanceAPIManager):
             diff_str = f"{diff} %"
 
         self.logger.info(
-            f"{self.datetime} Bought {origin_symbol} {round(self.balances[origin_symbol], 4)} for {from_coin_price} {target_symbol}. Gain: {diff_str}"
+            f"{self.datetime} Bought {origin_symbol} {self.balances[origin_symbol]} for {from_coin_price} {target_symbol}. Gain: {diff_str}"
         )
         # updating minimum_quantity in memory
-        self.logger.info(f"Updating START_AMOUNT for {origin_symbol} : {order_quantity}")
-        self.config.START_AMOUNT[origin_symbol] = order_quantity
+        self.logger.info(f"Updating START_AMOUNT for {origin_symbol} : {self.balances[origin_symbol]}")
+        self.config.START_AMOUNT[origin_symbol] = self.balances[origin_symbol]
 
         if diff is not None:
             if diff > 0.0:
