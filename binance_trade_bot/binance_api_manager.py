@@ -460,6 +460,8 @@ class BinanceAPIManager:
         self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Order (Min.+fee): {minimum_order}")
 
         if order_quantity < minimum_order:
+            origin_tick = self.get_alt_tick(origin_symbol, target_symbol)
+            minimum_order = math.ceil(minimum_order * 10 ** origin_tick) / float(10 ** origin_tick)
             self.logger.info(f"Unprofitable trade ({order_quantity}) ... Increasing order to ({minimum_order})")
             order_quantity = minimum_order
 

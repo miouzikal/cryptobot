@@ -4,6 +4,7 @@ from traceback import format_exc
 from typing import Dict
 from sqlalchemy.orm.session import Session
 from binance.client import Client
+import math
 
 from .binance_api_manager import BinanceAPIManager, BinanceOrderBalanceManager
 from .binance_stream_manager import BinanceCache, BinanceOrder
@@ -96,9 +97,10 @@ class MockBinanceManager(BinanceAPIManager):
         self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Order (Min.+fee): {minimum_order}")
 
         if order_quantity < minimum_order:
+            origin_tick = self.get_alt_tick(origin_symbol, target_symbol)
+            minimum_order = math.ceil(minimum_order * 10 ** origin_tick) / float(10 ** origin_tick)
             self.logger.info(f"Unprofitable trade ({order_quantity}) ... Increasing order to ({minimum_order})")
             order_quantity = minimum_order
-
         target_quantity = order_quantity * from_coin_price
         fee = order_quantity * self.get_fee(origin_coin, target_coin, False)
         self.balances[target_symbol] -= target_quantity
