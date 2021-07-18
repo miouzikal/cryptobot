@@ -15,9 +15,10 @@ from sqlalchemy.orm import Session, aliased
 class Strategy(AutoTrader):
 
     def initialize(self):        
+        self.regenerate_coin_list = self.manager.now().replace(hour=4,minute=0,second=0,microsecond=0) + timedelta(days=1)    
         try:
             if len(self.config.SUPPORTED_COIN_LIST) > 2:
-                self.logger.info(f'Keeping current coin list until next refresh')
+                self.logger.info(f'Keeping current coin list until next refresh at {self.regenerate_coin_list}')
                 self.logger.info(f"Current coin list : {self.config.SUPPORTED_COIN_LIST}")
             else:
                 self.generate_new_coin_list()
@@ -32,8 +33,6 @@ class Strategy(AutoTrader):
 
         self.reinit_threshold = self.manager.now().replace(second=0,
                                                            microsecond=0)
-        self.regenerate_coin_list = self.manager.now().replace(hour=4,minute=0,second=0,
-                                                           microsecond=0) + timedelta(days=1)
 
     def scout(self):
         base_time: datetime = self.manager.now()
