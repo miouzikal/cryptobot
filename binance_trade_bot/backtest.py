@@ -96,8 +96,8 @@ class MockBinanceManager(BinanceAPIManager):
         self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Order (Min.+fee): {minimum_order}")
 
         if order_quantity < minimum_order:
-            self.logger.info("Unprofitable trade | Order Attempt: ({order_quantity}), cancel buy")
-            return None
+            self.logger.info("Unprofitable trade ({order_quantity}) ... Increasing order to ({minimum_order})}")
+            order_quantity = minimum_order
 
         target_quantity = order_quantity * from_coin_price
         fee = order_quantity * self.get_fee(origin_coin, target_coin, False)

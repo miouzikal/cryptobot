@@ -29,6 +29,7 @@ class Strategy(AutoTrader):
 
         self.logger.info(f'Updating Minimum Quantity ...')
         self.config.START_AMOUNT = {}
+        self.config.PREVIOUS_AMOUNT = {}
         self.set_minimum_quantity()
 
         self.reinit_threshold = self.manager.now().replace(second=0,
@@ -384,6 +385,8 @@ class Strategy(AutoTrader):
 
                 if order_quantity > minimum_quantity and pct_gain > 1.2:
                     self.logger.info(f"Jump to {best_pair.to_coin} | Order : ({minimum_quantity}) -> ({order_quantity}) ({round(pct_gain,2)}%)")
+                    # Saving START_AMOUNT to allow fallback
+                    self.config.PREVIOUS_AMOUNT[best_pair.to_coin.symbol] = self.config.START_AMOUNT[best_pair.to_coin.symbol]
                     # Update minimum_quantity to guarantee gain
                     self.logger.info(f"Updating {best_pair.to_coin} START_AMOUNT to {order_quantity} ...")
                     self.config.START_AMOUNT[best_pair.to_coin.symbol] = order_quantity    
