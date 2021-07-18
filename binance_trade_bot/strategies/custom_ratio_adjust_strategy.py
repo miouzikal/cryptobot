@@ -6,6 +6,7 @@ from binance_trade_bot import warmup_database
 
 from correlated_coins import correlated_coins
 from datetime import datetime, timezone, timedelta
+from time import sleep
 from collections import defaultdict
 from typing import List
 
@@ -159,6 +160,10 @@ class Strategy(AutoTrader):
             self.logger.info(f"New Coin List: {self.config.SUPPORTED_COIN_LIST}")
         except Exception as e:
             self.logger.info(f'Unable to update database with "supported_coin_list" : {e}')
+
+        self.logger.info(f'Sleeping 5 minutes ...')
+        sleep(300)
+
 
     def bridge_scout(self):
         current_coin = self.db.get_current_coin()
