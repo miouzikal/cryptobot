@@ -352,7 +352,10 @@ class Strategy(AutoTrader):
                     pct_gain = 0
 
                 if order_quantity > minimum_quantity and pct_gain > 1.2:
-                    self.logger.info(f"Jump | {best_pair.from_coin.symbol} -> {best_pair.to_coin.symbol} | Min. Order : {minimum_quantity} ({round(pct_gain,2)}%)")
+                    self.logger.info(f"Jump to {best_pair.to_coin.symbol} | Order : ({minimum_quantity}) -> ({order_quantity}) ({round(pct_gain,2)}%)")
+                    # Update minimum_quantity to guarantee gain
+                    self.logger.info(f"Updating {best_pair.to_coin.symbol} START_AMOUNT to {order_quantity} ...")
+                    self.config.START_AMOUNT[best_pair.to_coin.symbol] = order_quantity    
                     self.transaction_through_bridge(best_pair, coin_price, prices[best_pair.to_coin_id])
                     break
                 else:

@@ -447,35 +447,22 @@ class BinanceAPIManager:
 
         order_quantity = self._buy_quantity(origin_symbol, target_symbol, target_balance, from_coin_price)
 
-        session: Session
-        with self.db.db_session() as session:
-            try:
-                trade = session.query(Trade).filter(Trade.alt_coin_id == origin_symbol).filter(Trade.selling == False).order_by(Trade.datetime.desc()).limit(1).one().info()
-                minimum_quantity = float(trade['alt_trade_amount'])
-            except Exception as e:
-                self.logger.info(f"Unable to read last trade Amount - {e}")
-                try:
-                    minimum_quantity = self.config.START_AMOUNT[origin_symbol]
-                    self.logger.info(f"Using START_AMOUNT for Minimum Quantity: {self.config.START_AMOUNT[origin_symbol]}")
-                except Exception as e:
-                    self.logger.info(f"Unable to get START_AMOUNT  {e}")
-                    minimum_quantity = 0
+        try:
+            minimum_quantity = self.config.START_AMOUNT[origin_symbol]
+            self.logger.info(f"Using START_AMOUNT for Minimum Quantity: {self.config.START_AMOUNT[origin_symbol]}")
+        except Exception as e:
+            self.logger.info(f"Unable to get START_AMOUNT for {origin_symbol}, cancel buy")
+            return None
 
         fee = order_quantity * self.get_fee(origin_coin, target_coin, False)
 
-        if minimum_quantity is None or minimum_quantity == 0:
-            try:
-                minimum_quantity = self.config.START_AMOUNT[origin_symbol]
-                self.logger.info(f"Using START_AMOUNT for Minimum Quantity: {self.config.START_AMOUNT[origin_symbol]}")
-            except Exception as e:
-                self.logger.info(f"Unable to get START_AMOUNT for {origin_symbol}, cancel buy")
-                return None
-
-        minimum_order = minimum_quantity + (fee * 2)
-        self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Min. Order (+2xfee): {minimum_order}")
+        #minimum_order = minimum_quantity + (fee * 2)
+        #self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Min. Order (+2xfee): {minimum_order}")
+        minimum_order = minimum_quantity + fee
+        self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Order (Min.+fee): {minimum_order}")
 
         if order_quantity < minimum_order:
-            self.logger.info(f"Unprofitable trade ({order_quantity}), cancel buy")
+            self.logger.info("Unprofitable trade, cancel buy")
             return None
 
         self.logger.info(f"BUY QTY {order_quantity} of <{origin_symbol}>")
