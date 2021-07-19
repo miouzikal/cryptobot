@@ -442,31 +442,38 @@ class BinanceAPIManager:
             self.logger.info("Buy price became higher, cancel buy")
             return None
 
-        #from_coin_price = min(buy_price, from_coin_price)
-        trade_log = self.db.start_trade_log(origin_coin, target_coin, False)
-
         order_quantity = self._buy_quantity(origin_symbol, target_symbol, target_balance, from_coin_price)
 
         try:
             minimum_quantity = self.config.START_AMOUNT[origin_symbol]
-            self.logger.info(f"Using START_AMOUNT for Minimum Quantity: {self.config.START_AMOUNT[origin_symbol]}")
+            #self.logger.info(f"Using START_AMOUNT for Minimum Quantity: {self.config.START_AMOUNT[origin_symbol]}")
         except Exception as e:
             self.logger.info(f"Unable to get START_AMOUNT for {origin_symbol}, cancel buy")
             return None
 
-        fee = minimum_quantity * self.get_fee(origin_coin, target_coin, False)
+        origin_tick = self.get_alt_tick(origin_symbol, target_symbol)
 
-        minimum_order = minimum_quantity + fee
-        self.logger.info(f"Min. Quantity: {minimum_quantity} | Trade fee: | {fee} | Order (Min.+fee): {minimum_order}")
+        # calculate minimum order amount
+        min_fee = minimum_quantity * self.get_fee(origin_coin, target_coin, False)
+        minimum_order = math.floor((minimum_quantity + min_fee) * 10 ** origin_tick) / float(10 ** origin_tick)
+        
+        # calculate true amount
+        true_fee = order_quantity * self.get_fee(origin_coin, target_coin, False)
+        true_order_quantity = math.floor((order_quantity - true_fee) * 10 ** origin_tick) / float(10 ** origin_tick)
 
-        if order_quantity < minimum_order:
-            #self.logger.info(f"Unprofitable trade ({order_quantity}) ... Increasing order to ({minimum_order})")
-            self.logger.info(f"Unprofitable trade for {origin_symbol} ({order_quantity}), cancel buy")
+        if minimum_order > 0:
+            pct_gain = ((true_order_quantity - minimum_order) / minimum_order) * 100
+        else:
+            pct_gain = 0
+
+        self.logger.info(f"BUY: Min. Order (Min.+fee): {minimum_order} | Order Quantity: {order_quantity} | Estimated Net gains: ({round(pct_gain,2)}%)")
+
+        if true_order_quantity < minimum_order or pct_gain < 1.5:
+            self.logger.info(f"Unprofitable trade for {origin_symbol} - Net amount : {true_order_quantity} ({round(pct_gain,2)}%), cancel buy")
             return None
-            #origin_tick = self.get_alt_tick(origin_symbol, target_symbol)
-            #minimum_order = math.floor(minimum_order * 10 ** origin_tick) / float(10 ** origin_tick)
-            #self.logger.info(f"Unprofitable trade ({order_quantity}) ... Increasing order to ({minimum_order})")
-            #order_quantity = minimum_order
+ 
+        #from_coin_price = min(buy_price, from_coin_price)
+        trade_log = self.db.start_trade_log(origin_coin, target_coin, False)
 
         self.logger.info(f"BUY QTY {order_quantity} of <{origin_symbol}>")
 

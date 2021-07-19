@@ -1,4 +1,6 @@
-import os, sys
+import os, sys, math
+
+from sqlalchemy.sql.elements import Null
 
 from binance_trade_bot.auto_trader import AutoTrader
 from binance_trade_bot.database import Pair, Coin, Trade
@@ -29,7 +31,6 @@ class Strategy(AutoTrader):
 
         self.logger.info(f'Updating Minimum Quantity ...')
         self.config.START_AMOUNT = {}
-        self.config.PREVIOUS_AMOUNT = {}
         self.set_minimum_quantity()
 
         self.reinit_threshold = self.manager.now().replace(second=0,
@@ -385,11 +386,6 @@ class Strategy(AutoTrader):
 
                 if order_quantity > minimum_quantity and pct_gain > 1.2:
                     self.logger.info(f"Jump to {best_pair.to_coin} | Order : ({minimum_quantity}) -> ({order_quantity}) ({round(pct_gain,2)}%)")
-                    # Saving START_AMOUNT to allow fallback
-                    self.config.PREVIOUS_AMOUNT[best_pair.to_coin.symbol] = self.config.START_AMOUNT[best_pair.to_coin.symbol]
-                    # Update minimum_quantity to guarantee gain
-                    self.logger.info(f"Updating {best_pair.to_coin} START_AMOUNT to {order_quantity} ...")
-                    self.config.START_AMOUNT[best_pair.to_coin.symbol] = order_quantity    
                     self.transaction_through_bridge(best_pair, coin_price, prices[best_pair.to_coin_id])
                     break
                 else:
@@ -420,13 +416,15 @@ class Strategy(AutoTrader):
                 for coin in session.query(Coin).all():
                     if coin.enabled:
                         try:
-                            trade = session.query(Trade).filter(Trade.alt_coin_id == coin.symbol).filter(Trade.selling == False).order_by(Trade.datetime.desc()).limit(1).one().info()
+                            trade = session.query(Trade).filter(Trade.alt_coin_id == coin.symbol).filter(Trade.selling == False).filter(Trade.alt_trade_amount != None).order_by(Trade.datetime.desc()).limit(1).one().info()
                             minimum_quantity = float(trade['alt_trade_amount'])
                         except Exception as e:
                             self.logger.info(f"Unable to read last trade Amount for {coin.symbol} - {e}")
-                            self.logger.info(f"Using Bridge START_AMOUNT as base for Minimum Quantity: {new_start_amount}")
+                            self.logger.info(f"Using Bridge START_AMOUNT ({new_start_amount}) as base for Minimum Quantity")
                             from_coin_price = self.manager.get_ticker_price(coin.symbol + self.config.BRIDGE.symbol)
                             minimum_quantity = self.manager._buy_quantity(coin.symbol, self.config.BRIDGE.symbol, new_start_amount, from_coin_price)
+                            coin_tick = self.manager.get_alt_tick(coin.symbol, self.config.BRIDGE.symbol)
+                            minimum_quantity = math.floor(minimum_quantity * 10 ** coin_tick) / float(10 ** coin_tick)
 
                         if coin.symbol != self.config.BRIDGE.symbol:
                             if coin.symbol in list(self.config.START_AMOUNT):
