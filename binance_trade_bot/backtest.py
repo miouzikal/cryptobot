@@ -98,7 +98,7 @@ class MockBinanceManager(BinanceAPIManager):
 
         if order_quantity < minimum_order:
             #self.logger.info(f"Unprofitable trade ({order_quantity}) ... Increasing order to ({minimum_order})")
-            self.logger.info(f"Unprofitable trade for origin_symbol ({order_quantity}), cancel buy")
+            self.logger.info(f"Unprofitable trade for {origin_symbol} ({order_quantity}), cancel buy")
             return None
             #origin_tick = self.get_alt_tick(origin_symbol, target_symbol)
             #minimum_order = math.floor(minimum_order * 10 ** origin_tick) / float(10 ** origin_tick)
