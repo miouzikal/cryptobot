@@ -16,16 +16,19 @@ from sqlalchemy.orm import Session, aliased
 
 class Strategy(AutoTrader):
 
-    def initialize(self):        
-        self.regenerate_coin_list = self.manager.now().replace(hour=4,minute=0,second=0,microsecond=0) + timedelta(days=1)    
-        try:
-            if len(self.config.SUPPORTED_COIN_LIST) > 2:
-                self.logger.info(f'Keeping current coin list until next refresh at {self.regenerate_coin_list}')
-                self.logger.info(f"Current coin list : {self.config.SUPPORTED_COIN_LIST}")
-            else:
-                self.generate_new_coin_list()
-        except:
+    def initialize(self):
+        self.regenerate_coin_list = self.manager.now().replace(hour=2,minute=0,second=0,microsecond=0)
+        # push next date to following day if it is due to happen with the next 2 hours
+        if (self.manager.now() - self.regenerate_coin_list).total_seconds() <= 7200:
+            self.regenerate_coin_list = self.regenerate_coin_list + timedelta(days=1)
+
+        if len(self.config.SUPPORTED_COIN_LIST) > 2:
+            self.logger.info(f'Keeping current coin list until next refresh at {self.regenerate_coin_list.astimezone(tz=None)}')
+            self.logger.info(f"Current coin list : {self.config.SUPPORTED_COIN_LIST}")
+        else:
             self.generate_new_coin_list()
+            self.regenerate_coin_list = self.regenerate_coin_list + timedelta(days=1)
+            self.logger.info(f'Next refresh at {self.regenerate_coin_list.astimezone(tz=None)}')
 
         super().initialize()
 
@@ -100,14 +103,10 @@ class Strategy(AutoTrader):
                 'all_correlated_list':
                 True,
                 'start_datetime': [
-                    ((self.manager.now().astimezone(tz=timezone.utc).replace(
-                        hour=0, minute=0, second=0,
-                        microsecond=0)) - timedelta(days=7)).strftime('%Y-%m-%d.%H:%M:%S')
+                    str(self.manager.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=7))
                 ],
                 'end_datetime': [
-                    self.manager.now().astimezone(tz=timezone.utc).replace(
-                        hour=0, minute=0, second=0,
-                        microsecond=0).strftime('%Y-%m-%d.%H:%M:%S')
+                    str(self.manager.now().replace(hour=0, minute=0, second=0, microsecond=0))
                 ]
             })
         except Exception as e:
