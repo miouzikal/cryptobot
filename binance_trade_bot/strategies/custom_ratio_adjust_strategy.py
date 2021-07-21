@@ -42,13 +42,15 @@ class Strategy(AutoTrader):
     def scout(self):
         base_time: datetime = self.manager.now()
         allowed_idle_time = self.reinit_threshold
-        coin_list_stale_treshhold = self.regenerate_coin_list
 
         if base_time >= allowed_idle_time:
             self.re_initialize_trade_thresholds()
             self.reinit_threshold = self.manager.now().replace(second=0, microsecond=0) + timedelta(minutes=1)
 
-        if base_time >= coin_list_stale_treshhold:
+        if base_time >= self.regenerate_coin_list - timedelta(hours=1):
+            self.logger.info(f'Not yet implemented - Prefetch Klines and Volume data ...')
+
+        if base_time >= self.regenerate_coin_list:
             self.generate_new_coin_list()
             super().initialize()
             self.logger.info(f'Updating Minimum Quantity ...')
@@ -463,7 +465,7 @@ class Strategy(AutoTrader):
                 print(f"FEE: {fee}")
                 print(f"COIN_TO_BRIDGE_BALANCE: {coin_to_bridge_balance}")
                 """
-            else:
-                self.logger.info(f"Not enough {current_coin} to estimate bridge balance ...")
+            #else:
+            #    self.logger.info(f"Not enough {current_coin} to estimate bridge balance ...")
 
         return round(coin_to_bridge_balance,8)
