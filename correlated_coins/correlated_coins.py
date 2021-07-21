@@ -10,6 +10,7 @@ import json
 import math
 import time
 from datetime import datetime, timezone, timedelta
+from dateutil.parser import parse
 
 binance_api_key = ""
 binance_api_secret_key = ""
@@ -19,8 +20,6 @@ correlation_greater_than = 0.75
 correlation_less_than = 0.95
 paired_coin = "BTC"
 history_end = datetime.now().astimezone(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-#history_end = (datetime.now().astimezone(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)) - timedelta(days = 1)
-#history_end = datetime.now().replace(tzinfo=timezone.utc).astimezone(tz=None).replace(hour=0, minute=0, second=0, microsecond=0)
 history_delta = 7
 history_start = None
 history_interval = Client.KLINE_INTERVAL_1MINUTE
@@ -112,8 +111,8 @@ def get_one_coin_combinations(coin_list, coin):
 def get_coin_history(coin, bridge):
     coin_kline = {}
 
-    end = str(history_end.replace(microsecond=0).replace(tzinfo=timezone.utc).astimezone(tz=None))
-    start = str(history_start.replace(microsecond=0).replace(tzinfo=timezone.utc).astimezone(tz=None))
+    end = str(history_end.replace(microsecond=0))
+    start = str(history_start.replace(microsecond=0))
 
     try:
         coin_kline[coin] = client.get_historical_klines(
@@ -540,7 +539,7 @@ def update_top_ranked_coins():
 
     targetDate = history_end.strftime('%d-%m-%Y')
     
-    print("Fetching trade volume data for " + history_end.replace(tzinfo=timezone.utc).astimezone(tz=None).strftime('%d %B %Y'))
+    print("Fetching trade volume data for " + targetDate)
     for coin in data:
         if any([x in coin['symbol'].upper() for x in ['BULL', 'BEAR','UP', 'DOWN', 'HEDGE', 'LONG', 'SHORT']]) or coin['symbol'].upper() in ignored_coins:
             data.remove(coin)
@@ -601,18 +600,16 @@ def main(args):
     # read optional args
     if "start_datetime" in args and args["start_datetime"]:
       try:
-        #history_start = datetime.strptime(args["start_datetime"][0], '%Y-%m-%d.%H:%M:%S').replace(tzinfo=timezone.utc).astimezone(tz=None)
-        history_start = datetime.strptime(args["start_datetime"][0], '%Y-%m-%d.%H:%M:%S').astimezone(tz=timezone.utc)
+        history_start = parse(args["start_datetime"][0])
       except:
-        print('Invalid Date format - expected : "%Y-%m-%d.%H:%M:%S"')
+        print(f'Invalid format {args["start_datetime"][0]} - Please use a "dateutil.parser" compatible format')
         exit()
 
     if "end_datetime" in args and args["end_datetime"]:
       try:
-        #history_end = datetime.strptime(args["end_datetime"][0], '%Y-%m-%d.%H:%M:%S').replace(tzinfo=timezone.utc).astimezone(tz=None)
-        history_end = datetime.strptime(args["end_datetime"][0], '%Y-%m-%d.%H:%M:%S').astimezone(tz=timezone.utc)
+        history_end = parse(args["end_datetime"][0])
       except:
-        print('Invalid Date format - expected : "%Y-%m-%d.%H:%M:%S"')
+        print(f'Invalid format {args["end_datetime"][0]} - Please use a "dateutil.parser" compatible format')
         exit()
 
     if "date_offset" in args and args["date_offset"] and int(args["date_offset"][0]) > 0:
