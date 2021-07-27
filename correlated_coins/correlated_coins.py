@@ -19,8 +19,10 @@ top_n_ranked_coins = 100
 correlation_greater_than = 0.75
 correlation_less_than = 0.95
 paired_coin = "BTC"
-history_end = datetime.now().astimezone(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-history_delta = 7
+#history_end = datetime.now().astimezone(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+history_end = datetime.now().astimezone(tz=timezone.utc)
+history_end_str = "now"
+history_delta = 4 # in hours
 history_start = None
 history_interval = Client.KLINE_INTERVAL_1MINUTE
 coin_history_file = 'historical_klines.json'
@@ -408,9 +410,14 @@ def verify_coins_files(history = coin_history_file, used = used_coins_file):
 def update_coin_historical_klines(history = coin_history_file):
 
     coins_history = {}
-    requested_start = history_start.replace(minute=0, second=0, microsecond=0).timestamp()
-    requested_end = history_end.replace(minute=0, second=0, microsecond=0).timestamp()
-    print(f'Fetching trade data between "{history_start} ({requested_start}) and {history_end} ({requested_end})')
+    if history_end_str != "now":
+      requested_start = history_start.replace(minute=0, second=0, microsecond=0).timestamp()
+      requested_end = history_end.replace(minute=0, second=0, microsecond=0).timestamp()
+    else:
+      requested_start = history_start
+      requested_end = history_end
+    
+    print(f'Fetching trade data between "{history_start} and {history_end}')
 
     try:
         with open(history) as json_file:
@@ -445,7 +452,7 @@ def update_coin_historical_klines(history = coin_history_file):
 
         # Keep klines with data for full date range
         if len(coins_history[coin]) != 0:
-            hindsight = (len(coins_history[coin]) / 1440)
+            hindsight = (len(coins_history[coin]) / 60)
         else:
             hindsight = 0
 
@@ -481,7 +488,8 @@ def update_top_ranked_coins():
         'Accepts': 'application/json',
     }
 
-    ignored_coins = []
+    ignored_coins = get_coins_from_file(
+        ignored_coins_file) if os.path.isfile(ignored_coins_file) else []
 
     # get stablecoin list
     url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=stablecoins&order=market_cap_desc&per_page=250&page=1&sparkline=false'
@@ -528,74 +536,114 @@ def update_top_ranked_coins():
     for coin in raw_list:
       ignored_coins.append(coin['symbol'].upper())
 
-    # get top 250 coins
-    url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false'
-    session = Session()
-    session.headers.update(headers)
-    response = session.get(url)
-    data = json.loads(response.text)
+    if history_end_str == "now":
+      # get top 250 coins by volume
+      url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=1&sparkline=false&price_change_percentage=1h%2C24h%2C7d'
+      session = Session()
+      session.headers.update(headers)
+      response = session.get(url)
+      data = json.loads(response.text)
 
-    fullList = {}
+      fullList = []
 
-    targetDate = history_end.strftime('%d-%m-%Y')
-    
-    print("Fetching trade volume data for " + targetDate)
-    for coin in data:
-        if any([x in coin['symbol'].upper() for x in ['BULL', 'BEAR','UP', 'DOWN', 'HEDGE', 'LONG', 'SHORT']]) or coin['symbol'].upper() in ignored_coins:
+      for coin in data:
+        if any([x in coin['symbol'].upper() for x in ['BULL', 'BEAR','UP', 'DOWN', 'HEDGE', 'LONG', 'SHORT']]) or coin['symbol'].upper() in ignored_coins or any([x in coin['name'].lower() for x in ['wrapped']]):
+          data.remove(coin)
+          continue
+
+        if all(i in coin.keys() for i in ['price_change_percentage_1h_in_currency', 'price_change_percentage_24h_in_currency', 'price_change_percentage_7d_in_currency']):
+          # remove coins with negative trends
+          try:
+            if float(coin['price_change_percentage_1h_in_currency']) < 0 and float(coin['price_change_percentage_24h_in_currency']) < 0 and float(coin['price_change_percentage_7d_in_currency']) < 0:
+              data.remove(coin)
+              print(f"Removing negative trending coin {coin['symbol']}")
+              continue
+          except Exception as e:
+            print(f"Unable to parse coin trend. Removing {coin['symbol']} - {e}")
             data.remove(coin)
             continue
-        
-        dirName = "temp/" + str(targetDate)
-        try:
-            with open(dirName + '/coinVolume.json') as json_file:
-                coinVolume = json.load(json_file)
-        except:
-            coinVolume = None
 
-        if coinVolume is None or os.stat(dirName + '/coinVolume.json').st_size == 0 or coin['symbol'].upper() not in coinVolume:
-          url = 'https://api.coingecko.com/api/v3/coins/' + str(coin['id']) + "/history?date=" + str(targetDate) + "&localization=false"
+        fullList.append(coin['symbol'].upper())
 
-          session = Session()
-          session.headers.update(headers)
+      print("Saving top "+str(top_n_ranked_coins)+" coins by Volume ...")
+      try:
+          with open(used_coins_file, 'w') as writer:
+              for coin in fullList[:top_n_ranked_coins]:
+                writer.write(coin+'\n')
+                      
+          print("Top coin list stored successfully!")
+      except (ConnectionError, Timeout, TooManyRedirects) as e:
+          print(e)
 
-          response = session.get(url)
-          history = json.loads(response.text)
+    else:
+      # get top 250 coins
+      url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false'
+      session = Session()
+      session.headers.update(headers)
+      response = session.get(url)
+      data = json.loads(response.text)
 
-          try:
-              print(str(history['symbol']).upper() + ' ## ' + str(history['market_data']['total_volume']['usd']))
-              fullList[history['symbol'].upper()] = float(history['market_data']['total_volume']['usd'])
-          except:
-              print(str(history['symbol']).upper() + ' ## unavailable!' )
+      fullList = {}
+
+      targetDate = history_end.strftime('%d-%m-%Y')
+      
+      print("Fetching trade volume data for " + targetDate)
+      for coin in data:
+          if any([x in coin['symbol'].upper() for x in ['BULL', 'BEAR','UP', 'DOWN', 'HEDGE', 'LONG', 'SHORT']]) or coin['symbol'].upper() in ignored_coins or any([x in coin['name'].lower() for x in ['wrapped']]):
+              data.remove(coin)
               continue
+          
+          dirName = "temp/" + str(targetDate)
+          try:
+              with open(dirName + '/coinVolume.json') as json_file:
+                  coinVolume = json.load(json_file)
+          except:
+              coinVolume = None
 
-          time.sleep(1.5)
+          if coinVolume is None or os.stat(dirName + '/coinVolume.json').st_size == 0 or coin['symbol'].upper() not in coinVolume:
+            url = 'https://api.coingecko.com/api/v3/coins/' + str(coin['id']) + "/history?date=" + str(targetDate) + "&localization=false"
 
-        else:
-          fullList[coin['symbol'].upper()] = coinVolume[coin['symbol'].upper()]
+            session = Session()
+            session.headers.update(headers)
 
-    # create folder structure
-    if not os.path.exists(dirName):
-        os.makedirs(dirName)
+            response = session.get(url)
+            history = json.loads(response.text)
 
-    with open(dirName + '/coinVolume.json', 'w') as outfile:
-        json.dump(fullList, outfile)
+            try:
+                print(str(history['symbol']).upper() + ' ## ' + str(history['market_data']['total_volume']['usd']))
+                fullList[history['symbol'].upper()] = float(history['market_data']['total_volume']['usd'])
+            except:
+                print(str(history['symbol']).upper() + ' ## unavailable!' )
+                continue
 
-    print("Parsing top "+str(top_n_ranked_coins)+" correlated coins...")
-    try:
-        with open(used_coins_file, 'w') as writer:
-            # Sort shortList by value
-            for coin in sorted(fullList, key=fullList.get, reverse=True)[:top_n_ranked_coins]:
-                if float(fullList[coin]) > 0:
-                    writer.write(coin+'\n')
-                    #print(f"{coin} -> {fullList[coin]}")
-                    
-        print("Top coin list stored successfully!")
-    except (ConnectionError, Timeout, TooManyRedirects) as e:
-        print(e)
+            time.sleep(1.5)
+
+          else:
+            fullList[coin['symbol'].upper()] = coinVolume[coin['symbol'].upper()]
+
+      # create folder structure
+      if not os.path.exists(dirName):
+          os.makedirs(dirName)
+
+      with open(dirName + '/coinVolume.json', 'w') as outfile:
+          json.dump(fullList, outfile)
+
+      print("Parsing top "+str(top_n_ranked_coins)+" coins by Volume ...")
+      try:
+          with open(used_coins_file, 'w') as writer:
+              # Sort shortList by value
+              for coin in sorted(fullList, key=fullList.get, reverse=True)[:top_n_ranked_coins]:
+                  if float(fullList[coin]) > 0:
+                      writer.write(coin+'\n')
+                      #print(f"{coin} -> {fullList[coin]}")
+                      
+          print("Top coin list stored successfully!")
+      except (ConnectionError, Timeout, TooManyRedirects) as e:
+          print(e)
 
 def main(args):
 
-    global first_n_coins, top_n_ranked_coins, correlation_greater_than, correlation_less_than, paired_coin, history_start, history_delta, history_end, history_interval, coin_history_file, used_coins_file, ignored_coins_file
+    global first_n_coins, top_n_ranked_coins, correlation_greater_than, correlation_less_than, paired_coin, history_start, history_end_str, history_delta, history_end, history_interval, coin_history_file, used_coins_file, ignored_coins_file
 
     # read optional args
     if "start_datetime" in args and args["start_datetime"]:
@@ -606,6 +654,7 @@ def main(args):
         exit()
 
     if "end_datetime" in args and args["end_datetime"]:
+      history_end_str = "history"
       try:
         history_end = parse(args["end_datetime"][0])
       except:
@@ -627,7 +676,7 @@ def main(args):
         exit()
 
     if history_start is None:
-      history_start = (history_end - timedelta(days = history_delta))
+      history_start = (history_end - timedelta(hours = history_delta))
       
     if "update_top_coins" in args and args["update_top_coins"]:
       update_top_ranked_coins()

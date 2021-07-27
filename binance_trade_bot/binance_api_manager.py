@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import math
 import os
@@ -323,6 +323,10 @@ class BinanceAPIManager:
     def get_min_notional(self, origin_symbol: str, target_symbol: str):
         return float(self.get_symbol_filter(origin_symbol, target_symbol, "MIN_NOTIONAL")["minNotional"])
 
+    @cached(cache=TTLCache(maxsize=2000, ttl=43200))
+    def get_min_qty(self, origin_symbol: str, target_symbol: str):
+        return float(self.get_symbol_filter(origin_symbol, target_symbol, "LOT_SIZE")["minQty"])
+
     def _wait_for_order(
         self, order_id, origin_symbol: str, target_symbol: str
     ) -> Optional[BinanceOrder]:  # pylint: disable=unsubscriptable-object
@@ -407,8 +411,8 @@ class BinanceAPIManager:
 
         return False
 
-    def buy_alt(self, origin_coin: Coin, target_coin: Coin, buy_price: float) -> BinanceOrder:
-        return self.retry(self._buy_alt, origin_coin, target_coin, buy_price)
+    def buy_alt(self, origin_coin: Coin, target_coin: Coin, buy_price: float, force_buy: bool=False) -> BinanceOrder:
+        return self.retry(self._buy_alt, origin_coin, target_coin, buy_price, force_buy)
 
     def _buy_quantity(
         self, origin_symbol: str, target_symbol: str, target_balance: float = None, from_coin_price: float = None
@@ -423,7 +427,7 @@ class BinanceAPIManager:
     def float_as_decimal_str(num: float):
         return f"{num:0.08f}".rstrip("0").rstrip(".")  # remove trailing zeroes too    
 
-    def _buy_alt(self, origin_coin: Coin, target_coin: Coin, buy_price: float):  # pylint: disable=too-many-locals
+    def _buy_alt(self, origin_coin: Coin, target_coin: Coin, buy_price: float, force_buy: bool=False):  # pylint: disable=too-many-locals
         """
         Buy altcoin
         """
@@ -444,33 +448,39 @@ class BinanceAPIManager:
 
         order_quantity = self._buy_quantity(origin_symbol, target_symbol, target_balance, from_coin_price)
 
-        try:
-            # calculate minimum order amount
-            coin_tick = self.get_alt_tick(origin_symbol, target_symbol)
-            minimum_quantity = self.config.START_AMOUNT[origin_symbol]
-            fee = minimum_quantity * self.get_fee(origin_coin, self.config.BRIDGE, False)
-            minimum_order = math.floor((minimum_quantity + fee) * 10 ** coin_tick) / float(10 ** coin_tick)
-        except Exception as e:
-            self.logger.info(f"Unable to get START_AMOUNT for {origin_symbol}, cancel buy")
-            return None
-
-        if minimum_order > 0:
-            pct_gain = ((order_quantity - minimum_order) / minimum_order) * 100
-        else:
-            pct_gain = 0
-
         session: Session
         with self.db.db_session() as session:
-            tradeCount = session.query(Trade).filter(Trade.alt_trade_amount != None).count()
+          tradeCount = session.query(Trade).filter(Trade.alt_trade_amount != None).count()
 
-        if tradeCount > 0:
-            self.logger.info(f"Trade ({tradeCount}): Min. Order (Min.+fee): {minimum_order} | Order Quantity: {order_quantity} | Gains: ({round(pct_gain,2)}%)")
-            if order_quantity < minimum_order or pct_gain < 1.25:
-                self.logger.info(f"Unprofitable trade for {origin_symbol} - Net amount : {order_quantity} ({round(pct_gain,2)}%), cancel buy")
-                return None
+        if not force_buy:
+          try:
+              # calculate minimum order amount
+              coin_tick = self.get_alt_tick(origin_symbol, target_symbol)
+              minimum_quantity = self.config.START_AMOUNT[origin_symbol]
+              fee = minimum_quantity * self.get_fee(origin_coin, self.config.BRIDGE, False)
+              minimum_order = math.floor((minimum_quantity + fee) * 10 ** coin_tick) / float(10 ** coin_tick)
+          except Exception as e:
+              self.logger.info(f"Unable to get START_AMOUNT for {origin_symbol}, cancel buy")
+              return None
+
+          if minimum_order > 0:
+              pct_gain = ((order_quantity - minimum_order) / minimum_order) * 100
+          else:
+              pct_gain = 0
+
+          if tradeCount > 0:
+              self.logger.info(f"Trade ({tradeCount}): Min. Order (Min.+fee): {minimum_order} | Order Quantity: {order_quantity} | Gains: ({round(pct_gain,2)}%)")
+              if order_quantity < minimum_order or pct_gain < 1.25:
+                  self.logger.info(f"Unprofitable trade for {origin_symbol} - Net amount : {order_quantity} ({round(pct_gain,2)}%), cancel buy")
+                  return None
+          else:
+              self.logger.info(f"First Trade... Good luck!")
         else:
-            self.logger.info(f"First Trade... Good luck!")
- 
+          if tradeCount > 0:
+              self.logger.info(f"Force Buy! | Trade ({tradeCount}): Order Quantity: {order_quantity}")
+          else:
+              self.logger.info(f"First Trade... Good luck!")
+              
         #from_coin_price = min(buy_price, from_coin_price)
         trade_log = self.db.start_trade_log(origin_coin, target_coin, False)
 
@@ -511,6 +521,9 @@ class BinanceAPIManager:
         # updating minimum_quantity in memory
         self.logger.info(f"Updating START_AMOUNT for {origin_symbol} : {order_quantity}")
         self.config.START_AMOUNT[origin_symbol] = order_quantity
+        self.logger.info(f"Postpoing coin list refresh by 30 minutes")
+        self.config.REGENERATE_COIN_LIST = (self.now() + timedelta(minutes=30)).replace(second=0,microsecond=0)
+        self.logger.info(f'Next refresh at {self.config.REGENERATE_COIN_LIST.astimezone(tz=None)}')
 
         trade_log.set_complete(order.cumulative_quote_qty)
 

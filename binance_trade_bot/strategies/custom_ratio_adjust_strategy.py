@@ -1,4 +1,4 @@
-import os, sys, math
+import os, sys, math, subprocess, psutil
 
 from sqlalchemy.sql.elements import Null
 
@@ -14,30 +14,44 @@ from typing import List
 
 from sqlalchemy.orm import Session, aliased
 
+
 class Strategy(AutoTrader):
 
     def initialize(self):
-        self.regenerate_coin_list = self.manager.now().replace(hour=2,minute=0,second=0,microsecond=0)
-        # push next date to following day if it is due to happen with the next 2 hours
-        if (self.manager.now() - self.regenerate_coin_list).total_seconds() <= 7200:
-            self.regenerate_coin_list = self.regenerate_coin_list + timedelta(days=1)
+        self.logger.info(f'{self.manager.now().astimezone(tz=None)}')
+        self.config.REGENERATE_COIN_LIST = (self.manager.now() + timedelta(minutes=30)).replace(second=0,microsecond=0)
 
         if len(self.config.SUPPORTED_COIN_LIST) > 2:
-            self.logger.info(f'Keeping current coin list until next refresh at {self.regenerate_coin_list.astimezone(tz=None)}')
+            self.logger.info(f'Keeping current coin list until next refresh at {self.config.REGENERATE_COIN_LIST.astimezone(tz=None)}')
             self.logger.info(f"Current coin list : {self.config.SUPPORTED_COIN_LIST}")
         else:
             self.generate_new_coin_list()
-            self.regenerate_coin_list = self.regenerate_coin_list + timedelta(days=1)
-            self.logger.info(f'Next refresh at {self.regenerate_coin_list.astimezone(tz=None)}')
-
-        super().initialize()
 
         self.logger.info(f'Updating Minimum Quantity ...')
         self.config.START_AMOUNT = {}
         self.set_minimum_quantity()
 
-        self.reinit_threshold = self.manager.now().replace(second=0,
-                                                           microsecond=0)
+        self.clean_small_balances()
+
+        self.initialize_trade_thresholds()
+
+        self.reinit_threshold = self.manager.now().replace(second=0, microsecond=0)
+
+    def restart_program(self):
+        """Restarts the current program, with file objects and descriptors
+          cleanup
+        """
+
+        try:
+            p = psutil.Process(os.getpid())
+            for handler in p.get_open_files() + p.connections():
+                os.close(handler.fd)
+        except Exception as e:
+            #self.logger.error(e)
+            pass
+
+        python = sys.executable
+        os.execl(python, python, *sys.argv)
 
     def scout(self):
         base_time: datetime = self.manager.now()
@@ -47,16 +61,14 @@ class Strategy(AutoTrader):
             self.re_initialize_trade_thresholds()
             self.reinit_threshold = self.manager.now().replace(second=0, microsecond=0) + timedelta(minutes=1)
 
-        if base_time >= self.regenerate_coin_list - timedelta(hours=1):
-            self.logger.info(f'Not yet implemented - Prefetch Klines and Volume data ...')
-
-        if base_time >= self.regenerate_coin_list:
+        if base_time >= self.config.REGENERATE_COIN_LIST:
             self.generate_new_coin_list()
-            super().initialize()
-            self.logger.info(f'Updating Minimum Quantity ...')
-            self.set_minimum_quantity()
-            self.regenerate_coin_list = self.manager.now().replace(hour=4,minute=0,second=0,
-                                                           microsecond=0) + timedelta(days=1)
+            #self.initialize_trade_thresholds()
+            #self.logger.info(f'Updating Minimum Quantity ...')
+            #self.set_minimum_quantity()
+            #self.config.REGENERATE_COIN_LIST += timedelta(days=1)
+            #self.logger.info(f'Next refresh at {self.config.REGENERATE_COIN_LIST.astimezone(tz=None)}')
+            #self.clean_small_balances()
 
         #check if previous buy order failed. If so, bridge scout for a new coin.
         if self.failed_buy_order:
@@ -71,10 +83,11 @@ class Strategy(AutoTrader):
             current_coin = self.db.get_current_coin()
 
         if current_coin.symbol not in self.config.SUPPORTED_COIN_LIST:
-            self.logger.info(f"Selling {current_coin} as it was removed from 'SUPPORTED_COIN_LIST'")         
-            self.manager.sell_alt(
-                current_coin, self.config.BRIDGE, self.manager.get_sell_price(current_coin + self.config.BRIDGE)
-            )
+            if self.manager.get_currency_balance(current_coin.symbol) > self.manager.get_min_qty(current_coin.symbol, self.config.BRIDGE.symbol):
+                self.logger.info(f"Selling {current_coin} as it was removed from 'SUPPORTED_COIN_LIST'")         
+                self.manager.sell_alt(
+                    current_coin, self.config.BRIDGE, self.manager.get_sell_price(current_coin + self.config.BRIDGE)
+                )
             self.bridge_scout()
 
         # Display on the console, the current coin+Bridge, so users can see *some* activity and not think the bot has
@@ -92,6 +105,7 @@ class Strategy(AutoTrader):
             return
 
         self._jump_to_best_coin(current_coin, current_coin_price)
+        
 
     def generate_new_coin_list(self):
         new_coin_list = []
@@ -103,13 +117,13 @@ class Strategy(AutoTrader):
                 'update_top_coins':
                 True,
                 'all_correlated_list':
-                True,
-                'start_datetime': [
-                    str(self.manager.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=7))
-                ],
-                'end_datetime': [
-                    str(self.manager.now().replace(hour=0, minute=0, second=0, microsecond=0))
-                ]
+                True #,
+                #'start_datetime': [
+                #    str(self.manager.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=7))
+                #],
+                #'end_datetime': [
+                #    str(self.manager.now().replace(hour=0, minute=0, second=0, microsecond=0))
+                #]
             })
         except Exception as e:
             self.logger.info(f'Unable to generate "supported_coin_list" : {e}')
@@ -141,10 +155,21 @@ class Strategy(AutoTrader):
                 self.logger.info(f'Empty coin list - Aborting!')
                 sys.exit()
 
-        # Add current coin back in new list if not already there
+        # keep coinlist if no changes
+        if sorted(self.config.SUPPORTED_COIN_LIST) == sorted(new_coin_list):
+          self.logger.info(f"Coin list unchanged... skipping restart")
+          return
+
+        # Add current coin back in supported_coin_list if not already there
         current_coin = self.db.get_current_coin()
         if current_coin is not None and current_coin.symbol not in new_coin_list:
-            new_coin_list.append(current_coin.symbol)
+            self.logger.info(f"Adding {current_coin} back to 'SUPPORTED_COIN_LIST'")   
+            try:
+                new_coin_list.append(current_coin.symbol)      
+                with open('supported_coin_list', 'a') as writer:
+                        writer.write(current_coin.symbol+'\n')                            
+            except Exception as e:
+                self.logger.info(f'Unable to update "supported_coin_list" : {e}')
 
         # compare and show coin list differences
         if len(self.config.SUPPORTED_COIN_LIST) > 0:
@@ -163,17 +188,19 @@ class Strategy(AutoTrader):
         except Exception as e:
             self.logger.info(f'Unable to update database with "supported_coin_list" : {e}')
 
-        self.logger.info(f'Sleeping 5 minutes ...')
-        sleep(300)
-
+        self.logger.info(f'Sleeping 30 seconds and restart ...')
+        sleep(30)
+        self.restart_program()
 
     def bridge_scout(self):
         current_coin = self.db.get_current_coin()
-        if self.manager.get_currency_balance(current_coin.symbol) > self.manager.get_min_notional(
+        if self.manager.get_currency_balance(current_coin.symbol) > self.manager.get_min_qty(
             current_coin.symbol, self.config.BRIDGE.symbol
         ):
             # Only scout if we don't have enough of the current coin
             return
+        
+        self.logger.info(f'bridge_scout ...')
 
         """
         If we have any bridge coin leftover, buy a coin with it that we won't immediately trade out of
@@ -181,21 +208,33 @@ class Strategy(AutoTrader):
         bridge_balance = self.manager.get_currency_balance(self.config.BRIDGE.symbol)
 
         for coin in self.db.get_coins():
-            current_coin_price = self.manager.get_sell_price(coin + self.config.BRIDGE)
+            coin_price = self.manager.get_sell_price(coin + self.config.BRIDGE)
 
-            if current_coin_price is None:
+            if coin_price is None:
                 continue
 
-            ratio_dict, _ = self._get_ratios(coin, current_coin_price)
-            if not any(v > 0 for v in ratio_dict.values()):
-                if bridge_balance > self.manager.get_min_notional(coin.symbol, self.config.BRIDGE.symbol):
-                    to_coin_price = self.manager.get_buy_price(coin.symbol + self.config.BRIDGE.symbol)
-                    bridge_balance = self.manager.get_currency_balance(self.config.BRIDGE.symbol)
-                    order_quantity = self.manager._buy_quantity(coin.symbol, self.config.BRIDGE.symbol, bridge_balance, to_coin_price)
+            ratio_dict, _ = self._get_ratios(coin, coin_price)
+            ratio_dict = {k: v for k, v in ratio_dict.items() if v > 0}
+            # if we have any viable options, pick the one with the biggest ratio
+            if ratio_dict:
+                if len(ratio_dict) > 1:
+                    pairs = sorted(ratio_dict.items(), key=lambda x: x[1], reverse=True)
+                else:
+                    pairs = [max(ratio_dict, key=ratio_dict.get)]
 
-                    coin_tick = self.manager.get_alt_tick(coin.symbol, self.config.BRIDGE.symbol)
-                    minimum_quantity = self.config.START_AMOUNT[coin.symbol]
-                    fee = minimum_quantity * self.manager.get_fee(coin, self.config.BRIDGE, False)
+                for pair in pairs:
+                    if isinstance(pair, tuple):
+                        best_pair = pair[0]
+                    else:
+                        best_pair = pair
+
+                    to_coin_price = self.manager.get_buy_price(best_pair.to_coin.symbol + self.config.BRIDGE.symbol)
+                    bridge_balance = self.manager.get_currency_balance(self.config.BRIDGE.symbol) + self.estimate_bridge_balance_from_current_coin()
+                    order_quantity = self.manager._buy_quantity(best_pair.to_coin.symbol, self.config.BRIDGE.symbol, bridge_balance, to_coin_price)
+
+                    coin_tick = self.manager.get_alt_tick(best_pair.to_coin.symbol, self.config.BRIDGE.symbol)
+                    minimum_quantity = self.config.START_AMOUNT[best_pair.to_coin.symbol]
+                    fee = minimum_quantity * self.manager.get_fee(best_pair.to_coin, self.config.BRIDGE, False)
                     minimum_order = math.floor((minimum_quantity + fee) * 10 ** coin_tick) / float(10 ** coin_tick)
 
                     if minimum_order > 0:
@@ -203,17 +242,20 @@ class Strategy(AutoTrader):
                     else:
                         pct_gain = 0
 
+                    #self.logger.info(f"BRIDGE_SCOUT: {coin.symbol} -> {best_pair.to_coin.symbol} | Order : ({minimum_quantity}) -> ({order_quantity}) ({round(pct_gain,2)}%)")
+
                     if order_quantity > minimum_order:
-                        self.logger.info(f"BRIDGE_SCOUT: Buy {coin.symbol} | Order : ({minimum_quantity}) -> ({order_quantity}) ({round(pct_gain,2)}%)")
-                        result = self.manager.buy_alt(coin, self.config.BRIDGE, current_coin_price)
+                        self.logger.info(f"BRIDGE_SCOUT: Buy {best_pair.to_coin.symbol} | Order : ({minimum_quantity}) -> ({order_quantity}) ({round(pct_gain,2)}%)")
+                        result = self.manager.buy_alt(best_pair.to_coin, self.config.BRIDGE, to_coin_price, True)
                         if result is not None:
-                            self.db.set_current_coin(coin)
+                            self.db.set_current_coin(best_pair.to_coin)
                             self.failed_buy_order = False
                             return coin
                         else:
                             self.failed_buy_order = True
                     else:
                         continue
+
 
     def initialize_current_coin(self):
         """
@@ -249,6 +291,8 @@ class Strategy(AutoTrader):
                     )
                     self.logger.info("Ready to start trading")
 
+
+
     def re_initialize_trade_thresholds(self):
         """
         Re-initialize all the thresholds ( hard reset - as deleting db )
@@ -282,6 +326,8 @@ class Strategy(AutoTrader):
 
                 pair.ratio = (pair.ratio *self.config.RATIO_ADJUST_WEIGHT + from_coin_price / to_coin_price)  / (self.config.RATIO_ADJUST_WEIGHT + 1)
 
+
+
     def initialize_trade_thresholds(self):
         """
         Initialize the buying threshold of all the coins for trading between them
@@ -299,8 +345,8 @@ class Strategy(AutoTrader):
             init_weight = self.config.RATIO_ADJUST_WEIGHT
             
             #Binance api allows retrieving max 1000 candles
-            if init_weight > 500:
-                init_weight = 500
+            if init_weight > 100:
+                init_weight = 100
 
             self.logger.info(f"Using last {init_weight} candles to initialize ratios")
 
@@ -352,7 +398,6 @@ class Strategy(AutoTrader):
 
                     pair.ratio = cumulative_ratio
 
-            self.logger.info(f"Finished ratio init...")
 
     def _jump_to_best_coin(self, coin: Coin, coin_price: float, excluded_coins: List[Coin] = []):
         """
@@ -397,6 +442,8 @@ class Strategy(AutoTrader):
                 else:
                     #self.logger.info(f"Skip | {best_pair.from_coin.symbol} -> {best_pair.to_coin.symbol} | Order : ({order_quantity}) / Min. Order : ({minimum_quantity})")
                     continue
+
+
 
     def set_minimum_quantity(self):
         # calculate estimated bridge balance from current coin
@@ -447,6 +494,8 @@ class Strategy(AutoTrader):
             self.logger.info(f"Unable to save minimum quantity - {e}")
             return
 
+
+
     def estimate_bridge_balance_from_current_coin(self):
         coin_to_bridge_balance = 0
         current_coin = self.db.get_current_coin()
@@ -468,4 +517,31 @@ class Strategy(AutoTrader):
             #else:
             #    self.logger.info(f"Not enough {current_coin} to estimate bridge balance ...")
 
+
         return round(coin_to_bridge_balance,8)
+
+    def clean_small_balances(self):
+        self.logger.info(f'Cleaning small balances ...')
+        try:
+          dustlist = []
+          sellList = []
+          current_coin = self.db.get_current_coin()
+          if current_coin is not None:
+            for asset in self.manager.binance_client.get_account()["balances"]:  
+              if asset['asset'] not in [current_coin.symbol, self.config.BRIDGE.symbol, 'BNB'] and float(asset['free']) > 0:
+                if self.manager.get_currency_balance(asset['asset']) * self.manager.get_sell_price(asset['asset'] + 'BTC')  < 0.0003:
+                  dustlist.append(asset['asset'])
+                else:
+                  if self.manager.get_currency_balance(asset['asset']) > self.manager.get_min_qty(asset['asset'], self.config.BRIDGE.symbol):
+                    sellList.append(asset['asset'])
+
+          if len(dustlist) > 0:
+            self.logger.info(f"Converting : {dustlist}")
+            partially_order = None
+            while partially_order is None:
+              partially_order = self.manager.binance_client.transfer_dust(asset=','.join(dustlist))
+          
+          if len(sellList) > 0:
+            self.logger.info(f"Selling : {sellList}")
+        except Exception as e:
+          self.logger.warning(f"Unable to convert small balances : {e}")
